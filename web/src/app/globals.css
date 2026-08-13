@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Brand & Authority Tokens */
+    --brand-primary: #0284c7;
+    --brand-primary-hover: #0369a1;
+    --brand-primary-active: #075985;
+    --brand-glow: rgba(2, 132, 199, 0.15);
+
+    /* 9-Step Neutral Palette (Dark First for Control Room) */
+    --bg-page: #020617;
+    --bg-surface: #0f172a;
+    --bg-surface-elevated: #1e293b;
+    --border-subtle: #334155;
+    --border-strong: #475569;
+    --text-muted: #94a3b8;
+    --text-body: #cbd5e1;
+    --text-heading: #f8fafc;
+
+    /* Risk Taxonomy Tokens */
+    --risk-low: #10b981;
+    --risk-low-bg: rgba(16, 185, 129, 0.12);
+    --risk-low-border: #059669;
+
+    --risk-moderate: #f59e0b;
+    --risk-moderate-bg: rgba(245, 158, 11, 0.12);
+    --risk-moderate-border: #d97706;
+
+    --risk-high: #f97316;
+    --risk-high-bg: rgba(249, 115, 22, 0.15);
+    --risk-high-border: #ea580c;
+
+    --risk-critical: #ef4444;
+    --risk-critical-bg: rgba(239, 68, 68, 0.20);
+    --risk-critical-border: #dc2626;
+
+    /* Non-Risk System Feedback Colors */
+    --sys-success: #06b6d4;
+    --sys-warning: #eab308;
+    --sys-error: #e11d48;
+    --sys-info: #3b82f6;
+  }
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-heading);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric & Telemetry Tabular Numbers Class */
+.font-mono-nums {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Information Density Helper Classes */
+.density-compact {
+  padding: 0.75rem;
+  gap: 0.75rem;
+}
+
+.density-spacious {
+  padding: 1.5rem;
+  gap: 1.5rem;
+}
+
+/* Standardized Component Baselines */
+.btn-primary {
+  background-color: var(--brand-primary);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  transition: all 200ms ease-in-out;
+}
+.btn-primary:hover {
+  background-color: var(--brand-primary-hover);
+}
+
+.btn-secondary {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-body);
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
+  border-radius: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  transition: all 200ms ease-in-out;
+}
+.btn-secondary:hover {
+  background-color: var(--border-subtle);
+  color: var(--text-heading);
+}
+
+.btn-danger {
+  background-color: #dc2626;
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  transition: all 200ms ease-in-out;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
+}
+.btn-danger:hover {
+  background-color: #b91c1c;
+}
+
+.card-command {
+  background-color: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(8px);
+  transition: border-color 200ms ease-in-out, background-color 200ms ease-in-out;
+}
+
+/* Risk Transition Smoothness */
+.risk-transition {
+  transition: background-color 200ms ease-in-out, border-color 200ms ease-in-out, color 200ms ease-in-out;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-page);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-surface-elevated);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-subtle);
+}

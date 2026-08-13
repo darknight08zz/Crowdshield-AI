@@ -1,0 +1,14 @@
+{
+  "version": "model_v20260811_095522.json",
+  "created_at": "2026-08-11T09:55:22.885891+00:00",
+  "metrics": {
+    "mse": 6.2215,
+    "rmse": 2.4943,
+    "r2_score": 0.9897,
+    "high_risk_precision": 0.9333,
+    "high_risk_recall": 0.9333,
+    "high_risk_f1": 0.9333,
+    "train_samples": 4800,
+    "test_samples": 1200
+  }
+}

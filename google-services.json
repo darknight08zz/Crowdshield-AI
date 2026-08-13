@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "941599700515",
+    "project_id": "crowdshield-94e02",
+    "storage_bucket": "crowdshield-94e02.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941599700515:android:f527ec600dd8fb465ae396",
+        "android_client_info": {
+          "package_name": "com.cmp.crowdshield"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYQYVKPHTBRt67ctpj2P3JK_Wynbc_Nfw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
