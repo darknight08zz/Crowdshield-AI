@@ -19,6 +19,7 @@ from app.api.v1.health import router as health_router, evaluate_system_readiness
 from app.api.v1.telemetry import router as telemetry_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.realtime import router as realtime_router
+from app.api.v1.incident_reports import router as incident_reports_router
 
 from app.core.middleware import RequestCorrelationMiddleware
 from app.services.async_persistence import AsyncPersistenceManager
@@ -99,6 +100,7 @@ app.include_router(health_router, prefix="/api/v1")
 app.include_router(telemetry_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(realtime_router, prefix="/api/v1")
+app.include_router(incident_reports_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["Health"])

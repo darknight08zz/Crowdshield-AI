@@ -29,6 +29,7 @@ htmlcov/
 *.sqlite
 *.sqlite3
 backend/data/
+backend/app/ai/models/model_v*.json
 
 # Node / JS / Web / Mobile
 node_modules/

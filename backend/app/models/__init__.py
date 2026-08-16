@@ -3,6 +3,7 @@ from app.models.event import Event
 from app.models.zone import Zone
 from app.models.gate import Gate, GateTypeEnum, GateStatusEnum
 from app.models.incident import Incident, IncidentTransition, IncidentStatusEnum
+from app.models.incident_report import IncidentReport, IncidentReportStatusEnum
 from app.models.assignment import OfficerAssignment, AssignmentStatusEnum
 from app.models.dispatch import (
     ResponseOfficer,
@@ -34,6 +35,8 @@ __all__ = [
     "Incident",
     "IncidentTransition",
     "IncidentStatusEnum",
+    "IncidentReport",
+    "IncidentReportStatusEnum",
     "OfficerAssignment",
     "AssignmentStatusEnum",
     "ResponseOfficer",
