@@ -102,14 +102,21 @@ def test_staff_role_self_signup_rejected(setup_auth_db):
 
 def test_citizen_otp_verification_and_login(setup_auth_db):
     """Verifies OTP activation and subsequent login."""
+    db = setup_auth_db[0]
+    user = db.query(User).filter(User.email == "jane_citizen@example.com").first()
+    assert user is not None
+    otp_code = user.verification_otp
+
+
     verify_res = client.post("/api/v1/auth/verify-otp", json={
         "email": "jane_citizen@example.com",
-        "otp": "654321"
+        "otp": otp_code
     })
     assert verify_res.status_code == 200
     token_data = verify_res.json()
     assert "access_token" in token_data
     assert token_data["user"]["role"] == "citizen"
+
 
     login_res = client.post("/api/v1/auth/login", json={
         "email": "jane_citizen@example.com",

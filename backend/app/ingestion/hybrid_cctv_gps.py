@@ -1,18 +1,18 @@
 """
 CROWDSHIELD HYBRID CCTV + CITIZEN GPS INGESTION ADAPTER
 =======================================================
-Processes raw optical density maps and flow vectors from RTSP camera streams,
-cross-referenced with active Citizen app GPS location telemetry.
+Processes optical density maps, trajectory flow vectors, and person detection telemetry
+from camera streams, cross-referenced with active Citizen app GPS location telemetry.
 
 Ingestion Contract:
 -------------------
-Produces identical feature vector keys as ai/features.py, plus confidence_score.
-Features extracted:
-- Optical density estimation (peds/m² converted to 0.0-1.0 occupancy ratio)
+Produces canonical feature vector keys expected by ai/features.py, plus confidence_score and provenance:
+- Optical density estimation (peds/m² converted to occupancy ratio)
 - Directional velocity vectors (inflow, outflow, avg speed)
 - Counter-flow angle variance (direction_conflict_score & reverse_flow_ratio)
 - Spatial sub-area grid velocity variance (blockage_score)
 - Citizen GPS active user cross-check multiplier
+- Full provenance metadata (processing_mode, calibration_status, telemetry_source, is_degraded, is_synthetic)
 """
 
 from typing import Dict, Any, Optional
@@ -27,7 +27,7 @@ from app.ingestion.cv.pipeline import CVPipelineManager
 from app.models.zone import Zone
 from app.models.gate import Gate
 from app.models.incident import Incident
-from app.models.user import User
+from app.models.user import User, UserRoleEnum
 
 
 class HybridCCTVGPSIngestion(BaseSensorIngestion):
@@ -36,9 +36,9 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
     Processes real camera optical flow & density metrics with GPS cross-verification and CVPipelineManager.
     """
 
-    def __init__(self, fallback_adapter: Optional[BaseSensorIngestion] = None):
+    def __init__(self, fallback_adapter: Optional[BaseSensorIngestion] = None, processing_mode: str = "LIVE"):
         self.fallback = fallback_adapter or SyntheticSensorIngestion()
-        # Simulated live telemetry state buffer for cameras and RTSP streams
+        self.processing_mode = processing_mode
         self.camera_buffers: Dict[str, Dict[str, Any]] = {}
         self.cv_pipelines: Dict[str, CVPipelineManager] = {}
 
@@ -49,6 +49,7 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
         """
         self.camera_buffers[str(zone_id)] = {
             "timestamp": datetime.now(timezone.utc),
+            "camera_id": camera_data.get("camera_id", "CAM-01"),
             "raw_density_peds_m2": camera_data.get("density_peds_m2", 1.8),
             "inflow_peds_min": camera_data.get("inflow_peds_min", 95.0),
             "outflow_peds_min": camera_data.get("outflow_peds_min", 85.0),
@@ -67,9 +68,10 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
             # 1. Fetch Zone and Database context
             zone = db.query(Zone).filter(Zone.id == UUID(zone_str)).first() if db else None
             zone_area_m2 = float(getattr(zone, "area_m2", 500.0)) if zone else 500.0
+            is_calibrated = (getattr(zone, "is_calibrated", 1.0) == 1.0) if zone else False
+            homography = getattr(zone, "homography_matrix", None) if zone else None
 
             # 2. Extract Active GPS Pings from DB
-            from app.models.user import UserRoleEnum
             active_gps_users = db.query(User).filter(
                 User.role == UserRoleEnum.CITIZEN,
                 User.is_active == True
@@ -89,7 +91,10 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
                 )
                 fallback_data["confidence_score"] = quality["confidence_score"]
                 fallback_data["telemetry_source"] = "live_cctv_gps"
+                fallback_data["processing_mode"] = self.processing_mode
+                fallback_data["calibration_status"] = "HOMOGRAPHY" if is_calibrated else "UNCALIBRATED"
                 fallback_data["is_degraded"] = True
+                fallback_data["is_synthetic"] = (self.processing_mode == "SIMULATION")
                 fallback_data["quality_breakdown"] = quality["quality_breakdown"]
                 return fallback_data
 
@@ -103,23 +108,33 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
                 gps_sample_count=active_gps_users
             )
 
-            # If telemetry is too stale (>30s), fall back to synthetic
+            # If telemetry is too stale (>30s), fall back to degraded telemetry
             if feed_age > 30.0:
                 fallback_data = self.fallback.get_zone_features(zone_id, db)
                 fallback_data["confidence_score"] = quality["confidence_score"]
                 fallback_data["telemetry_source"] = "live_cctv_gps"
+                fallback_data["processing_mode"] = self.processing_mode
+                fallback_data["calibration_status"] = "HOMOGRAPHY" if is_calibrated else "UNCALIBRATED"
                 fallback_data["is_degraded"] = True
+                fallback_data["is_synthetic"] = (self.processing_mode == "SIMULATION")
                 fallback_data["quality_breakdown"] = quality["quality_breakdown"]
                 return fallback_data
 
-            # 5. Run CV Pipeline Manager (Addendum Prompt 1)
+            # 5. Run CV Pipeline Manager
             if zone_str not in self.cv_pipelines:
-                self.cv_pipelines[zone_str] = CVPipelineManager(zone_str, zone_area_m2=zone_area_m2)
+                self.cv_pipelines[zone_str] = CVPipelineManager(
+                    zone_id=zone_str,
+                    camera_id=cam_data.get("camera_id", "CAM-01"),
+                    zone_area_m2=zone_area_m2,
+                    homography_matrix=homography,
+                    is_calibrated=is_calibrated,
+                    processing_mode=self.processing_mode
+                )
 
             cv_output = self.cv_pipelines[zone_str].process_frame(cam_data)
 
             # Compute Hybrid Density (CCTV Optical Density + GPS Cross-Check)
-            cctv_density_peds_m2 = cv_output["density_peds_m2"]
+            cctv_density_peds_m2 = cv_output["density"]
             gps_estimated_density = active_gps_users / max(1.0, zone_area_m2 * 0.15)
             effective_density_peds_m2 = max(cctv_density_peds_m2, gps_estimated_density)
             current_density = min(1.0, effective_density_peds_m2 / 4.0)
@@ -136,13 +151,8 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
             restricted_gates = len([g for g in gates if g.status in ["restricted", "closed"]])
             gate_utilization = min(1.0, (cam_data["inflow_peds_min"] / max(1, total_capacity)) + (0.15 * restricted_gates))
 
-            # Factor CV strategy confidence & calibration status
-            is_calibrated = getattr(zone, "is_calibrated", 1.0) if zone else 1.0
-            homography = getattr(zone, "homography_matrix", None) if zone else None
-
             base_confidence = min(quality["confidence_score"], cv_output["confidence_score"])
-            if is_calibrated == 0.0:
-                # Uncalibrated fallback penalty: reduce confidence score cap to 0.75 and flag warning
+            if not is_calibrated:
                 base_confidence = min(base_confidence, 0.75)
                 calib_warning = "UNCALIBRATED ZONE: Using estimated default floor area (500m²). Accuracy degraded."
             else:
@@ -162,20 +172,25 @@ class HybridCCTVGPSIngestion(BaseSensorIngestion):
                 "blockage_score": round(float(cam_data["blockage_score"]), 3),
                 "confidence_score": final_confidence,
                 "telemetry_source": "live_cctv_gps",
-                "is_degraded": quality["is_degraded"] or (is_calibrated == 0.0),
+                "processing_mode": self.processing_mode,
+                "calibration_status": "HOMOGRAPHY" if is_calibrated else "UNCALIBRATED",
+                "is_degraded": quality["is_degraded"] or (not is_calibrated),
+                "is_synthetic": (self.processing_mode == "SIMULATION"),
                 "quality_breakdown": {
                     **quality["quality_breakdown"],
-                    "cv_strategy": cv_output["strategy"],
-                    "is_calibrated": (is_calibrated == 1.0),
+                    "cv_strategy": cv_output.get("behavior_classification", "NORMAL"),
+                    "is_calibrated": is_calibrated,
                     "calibration_warning": calib_warning
                 }
             }
 
         except Exception as e:
-            # High-reliability fallback if any processing error occurs
-            print(f"[!] Ingestion error on zone {zone_id}: {e}. Triggering instant synthetic fallback.")
+            # High-reliability fallback if processing error occurs
+            print(f"[!] Ingestion error on zone {zone_id}: {e}. Triggering degraded telemetry output.")
             fallback_data = self.fallback.get_zone_features(zone_id, db)
             fallback_data["confidence_score"] = 0.30
             fallback_data["telemetry_source"] = "live_cctv_gps"
+            fallback_data["processing_mode"] = self.processing_mode
             fallback_data["is_degraded"] = True
+            fallback_data["is_synthetic"] = (self.processing_mode == "SIMULATION")
             return fallback_data

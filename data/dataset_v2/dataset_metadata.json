@@ -1,0 +1,58 @@
+{
+  "dataset_version": "v2.0",
+  "feature_schema_version": "v2.0",
+  "label_schema_version": "v2.0",
+  "total_samples": 1080,
+  "train_samples": 756,
+  "val_samples": 162,
+  "test_samples": 162,
+  "unique_events": 1,
+  "unique_cameras": 2,
+  "unique_zones": 4,
+  "split_strategy": "CHRONOLOGICAL",
+  "generalization_status": "INSUFFICIENT_INDEPENDENT_EVENTS_FOR_GENERALIZATION",
+  "primary_target": "EARLY_ESCALATION_5M",
+  "horizon_steps": 30,
+  "horizon_seconds": 300,
+  "candidate_features": [
+    "density",
+    "inflow_rate",
+    "outflow_rate",
+    "average_speed",
+    "median_speed",
+    "stationary_ratio",
+    "reverse_flow_ratio",
+    "direction_conflict_score",
+    "blockage_score",
+    "person_count",
+    "tracked_person_count",
+    "flow_imbalance",
+    "net_accumulation",
+    "density_change",
+    "density_rate",
+    "density_acceleration",
+    "speed_change",
+    "speed_rate",
+    "speed_acceleration",
+    "inflow_change",
+    "outflow_change",
+    "rolling_density_mean",
+    "rolling_density_std",
+    "rolling_speed_mean",
+    "rolling_speed_std"
+  ],
+  "target_distribution": {
+    "EARLY_ESCALATION_5M": {
+      "total_positive": 38,
+      "total_negative": 1042,
+      "positive_ratio": 0.03518518518518519
+    },
+    "RISK_DELTA_5M": {
+      "mean": 0.018585177271108404,
+      "median": 0.0,
+      "std": 10.30904323984566,
+      "min": -39.51051833770275,
+      "max": 37.07129791628907
+    }
+  }
+}

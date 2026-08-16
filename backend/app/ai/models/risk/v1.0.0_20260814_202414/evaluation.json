@@ -1,0 +1,17 @@
+{
+  "accuracy": 0.9889,
+  "precision": 0.9778,
+  "recall": 1.0,
+  "f1": 0.9888,
+  "roc_auc": 0.989,
+  "pr_auc": 0.9886,
+  "brier_score": 0.0136,
+  "fpr": 0.0217,
+  "fnr": 0.0,
+  "confusion_matrix": {
+    "tn": 90,
+    "fp": 2,
+    "fn": 0,
+    "tp": 88
+  }
+}

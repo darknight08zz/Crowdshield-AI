@@ -1,0 +1,52 @@
+{
+  "model_name": "crowd_risk_early_warning",
+  "model_type": "XGBoost",
+  "dataset_version": "v1.0",
+  "target": "HIGH_RISK_WITHIN_5M",
+  "prediction_horizon_seconds": 300,
+  "training_source_mode": "MIXED_EXPLICIT",
+  "random_seed": 42,
+  "training_duration_seconds": 4.44,
+  "hyperparameters": {
+    "n_estimators": 100,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 2,
+    "random_state": 42,
+    "eval_metric": "logloss",
+    "use_label_encoder": false,
+    "scale_pos_weight": 5.315789473684211
+  },
+  "selected_threshold": 0.1,
+  "calibration_method": "Platt_Scaling_Validation",
+  "test_metrics": {
+    "accuracy": 0.9889,
+    "precision": 0.9778,
+    "recall": 1.0,
+    "f1": 0.9888,
+    "roc_auc": 0.989,
+    "pr_auc": 0.9886,
+    "brier_score": 0.0136,
+    "fpr": 0.0217,
+    "fnr": 0.0,
+    "confusion_matrix": {
+      "tn": 90,
+      "fp": 2,
+      "fn": 0,
+      "tp": 88
+    }
+  },
+  "lead_time": {
+    "proxy_lead_time_seconds": 0.0,
+    "episodes_evaluated": 88,
+    "status": "PROXY_LEAD_TIME_CALCULATED",
+    "notice": "PROXY LEAD TIME based on physics risk transitions, NOT validated real stampedes."
+  },
+  "ground_truth_status": "NOT_CLINICALLY_OR_OPERATIONALLY_VALIDATED",
+  "label_type": "PROXY",
+  "model_status": "PROTOTYPE",
+  "model_version": "v1.0.0_20260814_202414",
+  "saved_at": "2026-08-14T20:24:14.250188+00:00"
+}

@@ -140,8 +140,12 @@ async def get_citizen_zone_density_grid(
 
 
 
-@router.get("/map-data")
+@router.get(
+    "/map-data",
+    dependencies=[Depends(require_role("citizen", "field_officer", "operator", "event_admin", "system_admin"))]
+)
 async def get_map_data(db: Session = Depends(get_db)):
+
     """
     Retrieves map overview telemetry combining event details, zone metrics, and gate choke-points.
     """

@@ -11,6 +11,21 @@ from app.schemas.gate import GateResponse, GateStatusUpdate
 from app.schemas.assignment import OfficerAssignmentCreate, OfficerAssignmentResponse
 from app.schemas.zone import ZoneAdjacencyCreate, ZoneAdjacencyResponse
 from app.schemas.barricade import BarricadeResponse, BarricadeCreate, BarricadeConfigUpdate
+from app.schemas.incident import IncidentCanonicalResponse, IncidentTransitionRequest
+from app.schemas.dispatch import (
+    ResponseOfficerResponse,
+    DispatchCreateRequest,
+    DispatchTransitionRequest as DispatchTransReq,
+    DispatchCanonicalResponse,
+)
+from app.services.incident_service import format_canonical_incident_response, transition_incident_status
+from app.services.dispatch_service import (
+    list_response_officers,
+    get_incident_dispatches,
+    get_dispatch_by_id,
+    create_dispatch_assignment,
+    transition_dispatch_status,
+)
 from app.services.audit_service import log_action
 
 from app.ai.features import extract_zone_features, SAFE_BASELINES
@@ -111,24 +126,9 @@ async def get_zone_risk(
             propagated_from_zone_id = prop_res.get("propagated_from_zone_id")
             propagated_from_zone_name = prop_res.get("propagated_from_zone_name")
 
-    # Time-Series Retention Snapshot
-    if zone and event_id:
-        try:
-            from app.api.v1.analytics import record_zone_metric_snapshot
-            record_zone_metric_snapshot(
-                db=db,
-                event_id=event_id,
-                zone_id=zone.id,
-                density=features_with_meta.get("current_density", 0.0),
-                inflow_rate=features_with_meta.get("inflow_rate", 0.0),
-                outflow_rate=features_with_meta.get("outflow_rate", 0.0),
-                avg_speed=features_with_meta.get("avg_pedestrian_speed", 1.2),
-                risk_score=current_risk,
-                behavior_classification=behavior.value,
-                propagated_risk_score=propagation_data.get("propagated_risk_score", 0.0) if propagation_data else 0.0
-            )
-        except Exception:
-            pass
+    # Note: Telemetry snapshot persistence is decoupled from GET risk read endpoints
+    # and strictly handled during telemetry ingestion pipelines.
+
 
     is_degraded = features_with_meta.get("is_degraded", False)
     confidence = features_with_meta.get("confidence_score", 0.85)
@@ -137,6 +137,11 @@ async def get_zone_risk(
         warning_banner = f"⚠️ DEGRADED TELEMETRY ALERT: Real-time sensor stream for Zone {zone_name} is stale or offline. YOU ARE NOW RELYING ON MANUAL JUDGMENT FOR THIS ZONE."
 
 
+    # Fetch prototype AI probability prediction (Part Z - separate from deterministic risk score)
+    from app.ai.model_loader import predict_risk_probability
+    ai_pred = predict_risk_probability(features_with_meta)
+    ai_status = "TRAINED_PROTOTYPE" if ai_pred.get("status") == "SUCCESS" else "MODEL_NOT_AVAILABLE"
+
     return {
         "zone_id": str(zone_id),
         "zone_name": zone_name,
@@ -144,6 +149,14 @@ async def get_zone_risk(
         "predicted_risk_2min": risk_2min,
         "predicted_risk_5min": risk_5min,
         "predicted_risk_10min": risk_10min,
+        "future_prediction_status": ai_status,
+        "ai_model_prediction": ai_pred if ai_pred.get("status") == "SUCCESS" else None,
+        "rule_based_projection": {
+            "risk_2min": risk_2min,
+            "risk_5min": risk_5min,
+            "risk_10min": risk_10min,
+            "projection_method": "PHYSICS_MOMENTUM_TRAJECTORY"
+        },
         "risk_bucket": mh_eval["current_bucket"],
         "effective_risk_bucket": mh_eval["effective_bucket"],
         "risk_source": risk_source,
@@ -570,3 +583,327 @@ async def reconfigure_barricade_status(
     )
 
     return barricade
+
+
+@router.get(
+    "/events/{event_id}/map",
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin", "field_officer", "citizen"))]
+)
+async def get_event_map_configuration(
+    event_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Phase 6C.4 — Read-only endpoint returning static event location, camera coordinates,
+    and zone polygons. Dynamic realtime telemetry is delivered separately via WebSocket.
+    """
+    event = None
+    if event_id and event_id != "evt_01":
+        try:
+            event = db.query(Event).filter(Event.id == UUID(event_id)).first()
+        except Exception:
+            event = None
+
+    return {
+        "event_id": str(event.id) if event else event_id,
+        "name": event.name if event else "Grand Music Festival 2026",
+        "latitude": 37.7745,
+        "longitude": -122.4174,
+        "venue": event.venue if event else "San Francisco Central Arena Park",
+        "cameras": [
+            {
+                "camera_id": "CAM-01",
+                "name": "Main Entrance Gate CCTV",
+                "event_id": event_id,
+                "latitude": 37.7752,
+                "longitude": -122.4189,
+                "zone_id": "z-1",
+                "status": "ONLINE"
+            },
+            {
+                "camera_id": "CAM-02",
+                "name": "North Concourse CCTV",
+                "event_id": event_id,
+                "latitude": 37.7758,
+                "longitude": -122.4179,
+                "zone_id": "z-2",
+                "status": "ONLINE"
+            },
+            {
+                "camera_id": "CAM-03",
+                "name": "East Corridor CCTV",
+                "event_id": event_id,
+                "latitude": 37.7748,
+                "longitude": -122.4169,
+                "zone_id": "z-3",
+                "status": "ONLINE"
+            },
+            {
+                "camera_id": "CAM-04",
+                "name": "Stage Front Pit CCTV",
+                "event_id": event_id,
+                "latitude": 37.7738,
+                "longitude": -122.4159,
+                "zone_id": "z-4",
+                "status": "ONLINE"
+            }
+        ],
+        "zones": [
+            {
+                "zone_id": "z-1",
+                "event_id": event_id,
+                "name": "Main Gate",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [37.7749, -122.4194],
+                        [37.7755, -122.4184],
+                        [37.7745, -122.4174],
+                        [37.7739, -122.4184]
+                    ]
+                }
+            },
+            {
+                "zone_id": "z-2",
+                "event_id": event_id,
+                "name": "North Concourse",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [37.7755, -122.4184],
+                        [37.7761, -122.4174],
+                        [37.7751, -122.4164],
+                        [37.7745, -122.4174]
+                    ]
+                }
+            },
+            {
+                "zone_id": "z-3",
+                "event_id": event_id,
+                "name": "East Corridor",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [37.7739, -122.4184],
+                        [37.7745, -122.4174],
+                        [37.7735, -122.4164],
+                        [37.7729, -122.4174]
+                    ]
+                }
+            },
+            {
+                "zone_id": "z-4",
+                "event_id": event_id,
+                "name": "Stage Front",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [37.7745, -122.4174],
+                        [37.7751, -122.4164],
+                        [37.7741, -122.4154],
+                        [37.7735, -122.4164]
+                    ]
+                }
+            }
+        ]
+    }
+
+
+# ============================================================================
+# PHASE 6D.1 — CANONICAL OPERATOR INCIDENT LIFECYCLE & TRANSITION ENDPOINTS
+# ============================================================================
+
+@router.get(
+    "/incidents",
+    response_model=List[IncidentCanonicalResponse],
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin", "field_officer"))]
+)
+async def list_operator_incidents(
+    event_id: Optional[str] = Query(None),
+    zone_id: Optional[str] = Query(None),
+    camera_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves real-time operational incidents filtered by event, zone, camera, or status.
+    Returns canonical incident responses with snapshot metrics and disclaimers.
+    """
+    query = db.query(Incident)
+    if event_id:
+        query = query.filter(Incident.event_id == event_id)
+    if zone_id:
+        query = query.filter(Incident.zone_id == zone_id)
+    if camera_id:
+        query = query.filter(Incident.camera_id == camera_id)
+    if status:
+        query = query.filter(Incident.status == status.upper())
+
+    incidents = query.order_by(Incident.created_at.desc()).all()
+    return [format_canonical_incident_response(inc) for inc in incidents]
+
+
+@router.get(
+    "/incidents/{incident_id}",
+    response_model=IncidentCanonicalResponse,
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin", "field_officer"))]
+)
+async def get_operator_incident(
+    incident_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves full canonical incident details, including complete state transition history.
+    """
+    from sqlalchemy import or_
+    import uuid as py_uuid
+    try:
+        val_uuid = py_uuid.UUID(str(incident_id))
+        query_filter = or_(Incident.incident_id == incident_id, Incident.id == val_uuid)
+    except (ValueError, AttributeError):
+        query_filter = (Incident.incident_id == incident_id)
+
+    incident = db.query(Incident).filter(query_filter).first()
+
+    if not incident:
+        raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
+
+    return format_canonical_incident_response(incident)
+
+
+@router.post(
+    "/incidents/{incident_id}/transition",
+    response_model=IncidentCanonicalResponse,
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin"))]
+)
+async def transition_operator_incident(
+    incident_id: str,
+    payload: IncidentTransitionRequest,
+    db: Session = Depends(get_db),
+    current_user: UserPayload = Depends(require_role("operator", "event_admin", "system_admin"))
+):
+    """
+    Executes an operational state transition on an active incident.
+    Enforces deterministic lifecycle machine rules and appends an audit transition record.
+    """
+    try:
+        actor_id = current_user.id or "OPERATOR"
+        updated_incident = transition_incident_status(
+            db=db,
+            incident_id_or_uuid=incident_id,
+            new_status=payload.new_status,
+            actor_id=actor_id,
+            reason=payload.reason
+        )
+        return format_canonical_incident_response(updated_incident)
+    except ValueError as ve:
+        err_msg = str(ve)
+        if "not found" in err_msg.lower():
+            raise HTTPException(status_code=404, detail=err_msg)
+        raise HTTPException(status_code=400, detail=err_msg)
+
+
+# ============================================================================
+# PHASE 6D.3 OPERATOR DISPATCH & FIELD RESPONSE ENDPOINTS
+# ============================================================================
+
+@router.get(
+    "/response-officers",
+    response_model=List[ResponseOfficerResponse],
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin", "field_officer"))]
+)
+async def get_response_officers_list(
+    event_id: str = Query("evt_01", description="Event identifier"),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns available and registered response officers/teams for field dispatch.
+    """
+    return list_response_officers(db, event_id=event_id)
+
+
+@router.get(
+    "/incidents/{incident_id}/dispatches",
+    response_model=List[DispatchCanonicalResponse],
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin", "field_officer"))]
+)
+async def get_incident_dispatches_list(
+    incident_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves all dispatch assignments for a specific incident.
+    """
+    return get_incident_dispatches(db, incident_id=incident_id)
+
+
+@router.post(
+    "/incidents/{incident_id}/dispatch",
+    response_model=DispatchCanonicalResponse,
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin"))]
+)
+async def create_operator_dispatch(
+    incident_id: str,
+    payload: DispatchCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: UserPayload = Depends(require_role("operator", "event_admin", "system_admin"))
+):
+    """
+    Creates a new field-response dispatch assignment for an active incident.
+    Enforces terminal incident checks and duplicate active dispatch protection.
+    """
+    assigned_by = current_user.email or current_user.id or "OPERATOR"
+    return create_dispatch_assignment(
+        db=db,
+        incident_id=incident_id,
+        officer_id=payload.officer_id,
+        eta_minutes=payload.eta_minutes or 5,
+        reason=payload.reason,
+        assigned_by=assigned_by,
+    )
+
+
+@router.get(
+    "/dispatches/{dispatch_id}",
+    response_model=DispatchCanonicalResponse,
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin", "field_officer"))]
+)
+async def get_operator_dispatch_detail(
+    dispatch_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves full details and transition audit history for a dispatch assignment.
+    """
+    dispatch = get_dispatch_by_id(db, dispatch_id=dispatch_id)
+    if not dispatch:
+        raise HTTPException(status_code=404, detail=f"Dispatch assignment '{dispatch_id}' not found.")
+    return dispatch
+
+
+@router.post(
+    "/dispatches/{dispatch_id}/transition",
+    response_model=DispatchCanonicalResponse,
+    dependencies=[Depends(require_role("operator", "event_admin", "system_admin"))]
+)
+async def transition_operator_dispatch(
+    dispatch_id: str,
+    payload: DispatchTransReq,
+    db: Session = Depends(get_db),
+    current_user: UserPayload = Depends(require_role("operator", "event_admin", "system_admin"))
+):
+    """
+    Executes an operator-side status transition on a dispatch assignment.
+    """
+    actor_id = current_user.email or current_user.id or "OPERATOR"
+    return transition_dispatch_status(
+        db=db,
+        dispatch_id=dispatch_id,
+        new_status=payload.new_status,
+        reason=payload.reason,
+        actor_type="OPERATOR",
+        actor_id=actor_id,
+    )
+
+
+

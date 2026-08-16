@@ -5,6 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { RiskBadge } from '@/components/ui/RiskBadge';
+import { OperationalWarningBadge, OperationalWarningState } from '@/components/ui/OperationalWarningBadge';
+import { CameraHealthBadge, CameraHealthStatus } from '@/components/ui/CameraHealthBadge';
+import { ConnectionStatusBadge } from '@/components/ui/ConnectionStatusBadge';
+import { ProvenancePanel } from '@/components/ui/ProvenancePanel';
 import { api, RecommendationData } from '@/lib/api';
 import { BEHAVIOR_COLORS } from '@/lib/constants';
 import {
@@ -18,17 +22,59 @@ import {
   Zap,
   Shield,
   Volume2,
+  Clock,
+  Activity,
+  Gauge,
+  Layers,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRealtimeInference } from '@/lib/useRealtimeInference';
+import { DensitySpeedTrendChart } from '@/components/dashboard/DensitySpeedTrendChart';
+import { PhysicsVsAiRiskChart } from '@/components/dashboard/PhysicsVsAiRiskChart';
+import { PersonCountFlowChart } from '@/components/dashboard/PersonCountFlowChart';
+import { AlertTimeline } from '@/components/dashboard/AlertTimeline';
+import { LeadTimeWidget } from '@/components/dashboard/LeadTimeWidget';
 
 export default function ZoneDetailPage() {
   const params = useParams();
   const router = useRouter();
   const zoneId = (params?.id as string) || 'z-1';
 
+  // Phase 6B/6C.1 Real-Time Inference Stream Subscription
+  const activeSub = zoneId
+    ? { eventId: 'EVT-MAIN', cameraId: `CAM-${zoneId.substring(0, 6)}`, zoneId: zoneId }
+    : null;
+  const realtime = useRealtimeInference(activeSub);
+
   const [loading, setLoading] = useState(true);
   const [riskData, setRiskData] = useState<any>(null);
   const [recommendation, setRecommendation] = useState<RecommendationData | null>(null);
+
+  // Sync incoming Phase 6B RealtimeInference payload into active riskData state
+  useEffect(() => {
+    if (realtime.data) {
+      setRiskData((prev: any) => ({
+        ...prev,
+        current_physics_risk: realtime.data!.current_physics_risk ?? realtime.data!.current_risk_score,
+        current_risk_score: realtime.data!.current_physics_risk ?? realtime.data!.current_risk_score,
+        risk_score: realtime.data!.current_physics_risk ?? realtime.data!.current_risk_score,
+        ai_probability: realtime.data!.ai_probability,
+        operational_warning_state: realtime.data!.operational_warning_state,
+        ai_status: realtime.data!.ai_status,
+        camera_health_status: realtime.data!.camera_health_status,
+        is_stale: realtime.data!.is_stale,
+        telemetry: realtime.data!.telemetry,
+        inflow: realtime.data!.telemetry?.inflow_rate,
+        outflow: realtime.data!.telemetry?.outflow_rate,
+        avg_speed: realtime.data!.telemetry?.average_speed,
+        density: realtime.data!.telemetry?.density,
+        provenance: realtime.data!.provenance,
+        disclaimer: realtime.data!.disclaimer,
+        warning_timestamp: realtime.data!.warning_timestamp,
+        warning_reason: realtime.data!.warning_reason,
+      }));
+    }
+  }, [realtime.data]);
 
   // Language & Announcement State
   const [selectedLang, setSelectedLang] = useState<'en' | 'hi'>('en');
@@ -38,7 +84,7 @@ export default function ZoneDetailPage() {
   // Simulation State
   const [simulating, setSimulating] = useState(false);
   const [proposedAction, setProposedAction] = useState<string>(
-    'ENFORCE_ONE_WAY_FLOW: Deploy directional barriers and staff near route route-aa111111'
+    'ENFORCE_ONE_WAY_FLOW: Deploy directional barriers and staff near designated choke point'
   );
   const [simResult, setSimResult] = useState<any>(null);
 
@@ -60,10 +106,10 @@ export default function ZoneDetailPage() {
 
       if (targetZoneId && api.isValidUUID(targetZoneId)) {
         const [rData, recData] = await Promise.all([
-          api.fetchZoneRisk(targetZoneId),
-          api.fetchZoneRecommendation(targetZoneId, selectedLang),
+          api.fetchZoneRisk(targetZoneId).catch(() => null),
+          api.fetchZoneRecommendation(targetZoneId, selectedLang).catch(() => null),
         ]);
-        setRiskData(rData);
+        setRiskData(rData || {});
         setRecommendation(recData);
 
         if (recData?.drafted_announcement) {
@@ -75,7 +121,6 @@ export default function ZoneDetailPage() {
     }
     loadDetail();
   }, [params?.id, selectedLang]);
-
 
   const handleSimulate = async () => {
     setSimulating(true);
@@ -153,10 +198,16 @@ export default function ZoneDetailPage() {
     },
   ];
 
+  const physicsRisk = riskData?.current_physics_risk ?? riskData?.current_risk_score ?? riskData?.risk_score ?? 0;
+  const aiProbability = typeof riskData?.ai_probability === 'number' ? riskData.ai_probability : null;
+  const warningState = (riskData?.operational_warning_state || 'NORMAL') as OperationalWarningState;
+  const cameraHealth = (riskData?.camera_health_status || 'ONLINE') as CameraHealthStatus;
+  const telemetry = riskData?.telemetry || {};
+
   return (
     <DashboardLayout>
       {/* Top Header & Navigation */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <Link
             href="/overview"
@@ -165,34 +216,32 @@ export default function ZoneDetailPage() {
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-              SECTOR ANALYSIS: <span className="text-cyan-400">{recommendation?.zone_name || riskData?.zone_name || `Sector (${zoneId.substring(0, 6)})`}</span>
-            </h1>
+            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+              <h1 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
+                SECTOR ANALYSIS: <span className="text-cyan-400">{recommendation?.zone_name || riskData?.zone_name || `Sector (${zoneId.substring(0, 6)})`}</span>
+              </h1>
+              <span className="text-xs font-mono-nums text-slate-400">CAM: CAM-{zoneId.substring(0, 6)}</span>
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Zone ID: <code className="text-slate-300 font-mono-nums">{zoneId}</code> | Deep Learning Feature Vector & Explainable AI
+              Zone ID: <code className="text-slate-300 font-mono-nums">{zoneId}</code> | Deep Learning Telemetry & XAI
             </p>
           </div>
         </div>
 
-        {/* Labeled Badges: Shared Standardized RiskBadge + Behavior Badge + Panic Propagation Source Badge */}
-        <div className="flex items-center gap-2.5">
-          <RiskBadge score={riskData?.current_risk_score ?? riskData?.risk_score ?? 0} size="lg" />
+        {/* Status Badges Header */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <ConnectionStatusBadge status={realtime.connectionStatus} />
+          <CameraHealthBadge status={cameraHealth} />
+          <OperationalWarningBadge state={warningState} size="md" />
 
-          <span className={`px-3.5 py-1.5 text-xs font-black rounded-lg border ${behaviorConfig.badge}`}>
+          {riskData?.is_stale && (
+            <span className="px-3 py-1 text-xs font-black rounded-lg border bg-amber-950/80 border-amber-500/60 text-amber-300 animate-pulse">
+              ⚠ DATA STALE
+            </span>
+          )}
+
+          <span className={`px-3.5 py-1 text-xs font-black rounded-lg border ${behaviorConfig.badge}`}>
             BEHAVIOR: {behaviorConfig.label}
-          </span>
-
-          {/* Panic Propagation Risk Source Badge */}
-          <span
-            className={`px-3 py-1.5 text-xs font-black rounded-lg border uppercase tracking-wider ${
-              riskData?.risk_source?.startsWith('propagated_from')
-                ? 'bg-purple-950/80 border-purple-500/60 text-purple-300 shadow-sm'
-                : 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
-            }`}
-          >
-            SOURCE: {riskData?.risk_source?.startsWith('propagated_from')
-              ? `PROPAGATED FROM ${riskData?.propagated_from_zone_name || 'NEIGHBOR'}`
-              : 'INDEPENDENT'}
           </span>
         </div>
       </div>
@@ -207,45 +256,51 @@ export default function ZoneDetailPage() {
         </div>
       )}
 
-      {/* 1. Risk Trend & Multi-Horizon Trajectory Stats */}
+      {/* 1. Primary Risk & Model Warning Lead Time Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-5">
         <div className="card-command p-3.5 space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase">CURRENT RISK</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase">CURRENT PHYSICS RISK</div>
           <div className="text-xl font-bold text-rose-400 font-mono-nums">
-            {(riskData?.current_risk_score?.toFixed(1) || riskData?.risk_score?.toFixed(1) || '0.0')}
+            {physicsRisk.toFixed(1)} / 100
           </div>
-          <div className="text-[10px] text-slate-500">Live Telemetry</div>
+          <div className="text-[10px] text-slate-500">Live Spatial Mechanics</div>
         </div>
 
         <div className="card-command p-3.5 space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase">FORECAST (+2 MIN)</div>
-          <div className="text-xl font-bold text-amber-400 font-mono-nums">
-            {(riskData?.predicted_risk_2min?.toFixed(1) || (riskData?.current_risk_score ? (riskData.current_risk_score + 1.5).toFixed(1) : '0.0'))}
-          </div>
-          <div className="text-[10px] text-amber-400/80 font-semibold">Immediate Window</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase">AI EARLY-WARNING</div>
+          {warningState === 'WARMING_UP' ? (
+            <div className="text-sm font-bold text-cyan-300 animate-pulse mt-1">WARMING UP</div>
+          ) : warningState === 'DEGRADED' || aiProbability === null ? (
+            <div className="text-sm font-bold text-amber-400 mt-1">UNAVAILABLE</div>
+          ) : (
+            <div className="text-xl font-bold text-cyan-300 font-mono-nums">
+              {(aiProbability * 100).toFixed(0)}%
+            </div>
+          )}
+          <div className="text-[10px] text-cyan-400/80 font-semibold">P6B Model Output</div>
         </div>
 
         <div className="card-command p-3.5 space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase">FORECAST (+5 MIN)</div>
-          <div className="text-xl font-bold text-rose-500 flex items-center gap-1 font-mono-nums">
-            {(riskData?.predicted_risk_5min?.toFixed(1) || '0.0')}
-            <TrendingUp className="w-4 h-4 text-rose-400 animate-pulse" />
+          <div className="text-[10px] font-bold text-slate-400 uppercase">MODEL WARNING LEAD TIME</div>
+          <div className="text-lg font-bold text-amber-400 font-mono-nums flex items-center gap-1">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+            {riskData?.provenance?.horizon_seconds || 300}s horizon
           </div>
-          <div className="text-[10px] text-rose-400 font-semibold">Tactical Horizon</div>
+          <div className="text-[10px] text-amber-400/80 font-semibold">Temporal Prediction Window</div>
         </div>
 
         <div className="card-command p-3.5 space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase">FORECAST (+10 MIN)</div>
-          <div className="text-xl font-bold text-purple-400 font-mono-nums">
-            {(riskData?.predicted_risk_10min?.toFixed(1) || '0.0')}
+          <div className="text-[10px] font-bold text-slate-400 uppercase">CROWD DENSITY</div>
+          <div className="text-xl font-bold text-cyan-400 font-mono-nums">
+            {(telemetry.density ?? riskData?.density ?? 0).toFixed(2)} p/m²
           </div>
-          <div className="text-[10px] text-purple-300 font-semibold">Strategic Horizon</div>
+          <div className="text-[10px] text-slate-400">Live Spatial Density</div>
         </div>
 
         <div className="card-command p-3.5 space-y-1">
           <div className="text-[10px] font-bold text-slate-400 uppercase">INFLOW VS OUTFLOW</div>
-          <div className="text-xl font-bold text-cyan-400 font-mono-nums">
-            {riskData?.inflow ?? 0} vs {riskData?.outflow ?? 0}
+          <div className="text-lg font-bold text-emerald-400 font-mono-nums">
+            {telemetry.inflow_rate ?? riskData?.inflow ?? 0} vs {telemetry.outflow_rate ?? riskData?.outflow ?? 0}
           </div>
           <div className="text-[10px] text-slate-400">Pedestrians / min</div>
         </div>
@@ -259,7 +314,85 @@ export default function ZoneDetailPage() {
         </div>
       </div>
 
-      {/* 2. XAI Explainability Text & Ranked Risk Factors */}
+      {/* 2. Detailed Live Telemetry Breakdown Card */}
+      <div className="card-command p-5 mt-5 space-y-3">
+        <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+          <Gauge className="w-4 h-4 text-cyan-400" />
+          LIVE SECTOR PHYSICS & COMPUTER VISION TELEMETRY METRICS
+        </h2>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 font-mono-nums">
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span className="text-[10px] text-slate-400 block font-sans font-bold">ESTIMATED PERSON COUNT</span>
+            <span className="text-lg font-extrabold text-white">
+              {(telemetry.person_count ?? Math.round((telemetry.density || 0) * 1000)).toLocaleString()}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span className="text-[10px] text-slate-400 block font-sans font-bold">TRACKED PERSON COUNT</span>
+            <span className="text-lg font-extrabold text-cyan-300">
+              {(telemetry.tracked_person_count ?? telemetry.person_count ?? 0).toLocaleString()}
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span className="text-[10px] text-slate-400 block font-sans font-bold">AVERAGE SPEED</span>
+            <span className="text-lg font-extrabold text-slate-200">
+              {(telemetry.average_speed ?? riskData?.avg_speed ?? 0).toFixed(2)} m/s
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span className="text-[10px] text-slate-400 block font-sans font-bold">MEDIAN SPEED</span>
+            <span className="text-lg font-extrabold text-slate-300">
+              {(telemetry.median_speed ?? (telemetry.average_speed ?? 0) * 0.95).toFixed(2)} m/s
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span className="text-[10px] text-slate-400 block font-sans font-bold">FLOW IMBALANCE</span>
+            <span className={`text-lg font-extrabold ${(telemetry.flow_imbalance ?? 0) > 20 ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {(telemetry.flow_imbalance ?? (telemetry.inflow_rate ?? 0) - (telemetry.outflow_rate ?? 0)).toFixed(0)} /min
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span className="text-[10px] text-slate-400 block font-sans font-bold">BLOCKAGE SCORE</span>
+            <span className="text-lg font-extrabold text-amber-300">
+              {((telemetry.blockage_score ?? 0) * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. PHASE 6C.3 — TEMPORAL CONTEXT INTELLIGENCE & HISTORICAL TRENDS */}
+      <div className="mt-5 space-y-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Main Telemetry & Density/Speed Trend Chart (7 cols) */}
+          <div className="lg:col-span-7 space-y-5">
+            <DensitySpeedTrendChart history={realtime.history} isStale={realtime.data?.is_stale} />
+            <PersonCountFlowChart history={realtime.history} />
+          </div>
+
+          {/* Dual Physics vs AI Risk Comparison & Operational State Timeline (5 cols) */}
+          <div className="lg:col-span-5 space-y-5">
+            <PhysicsVsAiRiskChart
+              history={realtime.history}
+              aiStatus={realtime.data?.ai_status}
+              warningState={warningState}
+            />
+            <LeadTimeWidget
+              horizonSeconds={riskData?.provenance?.horizon_seconds || 300}
+              leadTimeSeconds={realtime.history.length > 0 ? realtime.history[realtime.history.length - 1].lead_time_seconds : null}
+              warningState={warningState}
+            />
+            <AlertTimeline transitions={realtime.transitions} zoneName={riskData?.name || `Zone ${zoneId.substring(0, 6)}`} />
+          </div>
+        </div>
+      </div>
+
+      {/* 4. XAI Explainability Text, Ranked Risk Factors & Provenance */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 mt-5">
         <div className="lg:col-span-7 card-command p-5 space-y-4">
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
@@ -267,18 +400,24 @@ export default function ZoneDetailPage() {
             EXPLAINABLE AI (XAI) DIAGNOSTIC BREAKDOWN
           </h2>
 
-          {/* Panic Propagation incoming risk explanation line */}
-          {riskData?.propagation?.explanation_line && (
-            <div className="p-3 rounded-xl bg-purple-950/70 border border-purple-500/50 text-xs font-bold text-purple-200 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-purple-400 animate-pulse flex-shrink-0" />
-              <span>{riskData.propagation.explanation_line}</span>
+          {/* Warning Reason if present */}
+          {(riskData?.warning_reason || warningState === 'HIGH_RISK' || warningState === 'EARLY_WARNING') && (
+            <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs font-bold text-amber-300 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+              <div>
+                <span className="block text-[10px] text-amber-400/70 font-mono-nums uppercase">ACTIVE OPERATIONAL WARNING REASON:</span>
+                <span>{riskData?.warning_reason || 'Elevated localized crowd density and outflow rate reduction reaching critical proxy thresholds.'}</span>
+              </div>
             </div>
           )}
+
+          {/* Phase 6B Model Provenance & Prototype Disclaimer Component */}
+          <ProvenancePanel provenance={riskData?.provenance} disclaimer={riskData?.disclaimer} />
 
           <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs text-slate-300 leading-relaxed font-sans">
             {riskData?.explanation ||
               riskData?.xai_summary ||
-              'Baseline spatial telemetry active. No active crowd pressure escalation or directional bottleneck detected for this sector.'}
+              'Baseline spatial telemetry active. Monitored choke points operating within normal safety limits.'}
           </div>
 
           <div className="space-y-2">
@@ -296,8 +435,8 @@ export default function ZoneDetailPage() {
                       </span>
                       <span className="font-semibold text-slate-200">{f.factor}</span>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className="text-rose-400 font-bold font-mono-nums">{f.impact}</span>
+                    <div className="flex items-center space-x-3 font-mono-nums">
+                      <span className="text-rose-400 font-bold">{f.impact}</span>
                       <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
                         {f.severity}
                       </span>
@@ -313,7 +452,7 @@ export default function ZoneDetailPage() {
           </div>
         </div>
 
-        {/* 3. Recommended Actions & AI Simulation Control (5 cols) */}
+        {/* 4. Recommended Actions & AI Simulation Control (5 cols) */}
         <div className="lg:col-span-5 card-command p-5 space-y-4 flex flex-col justify-between">
           <div className="space-y-4">
             <h2 className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">

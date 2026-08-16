@@ -52,7 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const tokenRes = await fetch('/api/auth/token');
       if (tokenRes.ok) {
         const tokenData = await tokenRes.json();
-        setAccessToken(tokenData.token || null);
+        const tok = tokenData.token || null;
+        setAccessToken(tok);
+        if (tok && typeof window !== 'undefined') {
+          localStorage.setItem('token', tok);
+        }
       } else {
         setAccessToken(null);
       }
@@ -81,6 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetch('/api/auth/logout', { method: 'POST' });
       setUser(null);
       setAccessToken(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+      }
       router.push('/auth/login');
       router.refresh();
     } catch (e) {

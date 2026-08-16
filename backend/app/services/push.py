@@ -66,9 +66,19 @@ def send_fcm_multicast(
 ) -> Dict[str, Any]:
     """
     Sends FCM Multicast push notification to target device registration tokens.
+    Strictly returns status="SENT" only when Firebase API accepts the payload.
+    Returns status="MOCK" or status="FAILED" with success=False when Firebase is unconfigured or fails.
     """
-    if not tokens:
-        return {"sent_count": 0, "success": True, "mode": "empty"}
+    requested_count = len(tokens)
+    if requested_count == 0:
+        return {
+            "requested_count": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "status": "EMPTY",
+            "success": True,
+            "mode": "empty"
+        }
 
     is_initialized = initialize_firebase()
 
@@ -80,13 +90,38 @@ def send_fcm_multicast(
                 tokens=tokens
             )
             response = messaging.send_each_for_multicast(message)
-            print(f"[FCM PUSH SUCCESS] Sent {response.success_count}/{len(tokens)} messages. Title: '{title}'")
-            return {"sent_count": response.success_count, "success": True, "mode": "firebase_fcm"}
+            logger.info(f"[FCM PUSH SUCCESS] Sent {response.success_count}/{requested_count} messages. Title: '{title}'")
+            return {
+                "requested_count": requested_count,
+                "success_count": response.success_count,
+                "failure_count": response.failure_count,
+                "status": "SENT" if response.success_count > 0 else "FAILED",
+                "success": response.success_count > 0,
+                "mode": "firebase_fcm"
+            }
         except Exception as e:
-            print(f"[!] FCM Push sending error: {e}")
+            logger.error(f"[!] FCM Push sending error: {e}")
+            return {
+                "requested_count": requested_count,
+                "success_count": 0,
+                "failure_count": requested_count,
+                "status": "FAILED",
+                "success": False,
+                "error": str(e),
+                "mode": "firebase_fcm"
+            }
 
-    logger.info(f"[FCM PUSH NOTICE] Push requested for {len(tokens)} target devices | Title: '{title}'")
-    return {"sent_count": len(tokens), "success": True, "mode": "firebase_fcm_mock"}
+    logger.info(f"[FCM PUSH MOCK] Push requested for {requested_count} target devices (Firebase unconfigured) | Title: '{title}'")
+    return {
+        "requested_count": requested_count,
+        "success_count": 0,
+        "failure_count": requested_count,
+        "status": "MOCK",
+        "success": False,
+        "warning": "Firebase Cloud Messaging is not configured. Notification was logged locally in MOCK mode.",
+        "mode": "firebase_fcm_mock"
+    }
+
 
 
 def notify_zone_citizens(

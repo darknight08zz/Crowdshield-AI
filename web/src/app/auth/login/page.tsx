@@ -36,6 +36,10 @@ function LoginContent() {
         throw new Error(data.error || 'Login authentication failed');
       }
 
+      if (data.access_token && typeof window !== 'undefined') {
+        localStorage.setItem('token', data.access_token);
+      }
+
       await refreshSession();
 
       if (redirectPath) {

@@ -27,3 +27,6 @@ class RateLimiter:
 
 login_rate_limiter = RateLimiter(max_requests=5, window_seconds=60)
 reset_rate_limiter = RateLimiter(max_requests=3, window_seconds=300)
+signup_rate_limiter = RateLimiter(max_requests=5, window_seconds=60)
+telemetry_rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
+

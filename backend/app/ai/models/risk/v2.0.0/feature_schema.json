@@ -1,0 +1,29 @@
+{
+  "feature_cols": [
+    "density",
+    "inflow_rate",
+    "outflow_rate",
+    "average_speed",
+    "median_speed",
+    "stationary_ratio",
+    "reverse_flow_ratio",
+    "direction_conflict_score",
+    "blockage_score",
+    "person_count",
+    "tracked_person_count",
+    "flow_imbalance",
+    "net_accumulation",
+    "density_change",
+    "density_rate",
+    "density_acceleration",
+    "speed_change",
+    "speed_rate",
+    "speed_acceleration",
+    "inflow_change",
+    "outflow_change",
+    "rolling_density_mean",
+    "rolling_density_std",
+    "rolling_speed_mean",
+    "rolling_speed_std"
+  ]
+}

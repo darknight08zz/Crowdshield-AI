@@ -678,31 +678,68 @@ async def get_rbac_matrix(request: Request):
 async def search_audit_logs(
     search: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
+    actor_id: Optional[str] = Query(None),
+    resource_type: Optional[str] = Query(None),
+    resource_id: Optional[str] = Query(None),
+    event_id: Optional[str] = Query(None),
+    success: Optional[bool] = Query(None),
+    request_id: Optional[str] = Query(None),
     limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
     """
-    Searchable and filterable table over audit_log table.
+    Searchable and filterable table over immutable audit_log records.
+    Immutable: NO update or delete endpoints exist.
     """
     query = db.query(AuditLog)
     if action:
         query = query.filter(AuditLog.action.ilike(f"%{action}%"))
+    if actor_id:
+        try:
+            query = query.filter(AuditLog.actor_id == UUID(actor_id))
+        except Exception:
+            pass
+    if resource_type:
+        query = query.filter(AuditLog.resource_type == resource_type)
+    if resource_id:
+        query = query.filter(AuditLog.resource_id == resource_id)
+    if event_id:
+        query = query.filter(AuditLog.event_id == event_id)
+    if success is not None:
+        query = query.filter(AuditLog.success == success)
+    if request_id:
+        query = query.filter(AuditLog.request_id == request_id)
     if search:
         pattern = f"%{search}%"
         query = query.filter(
             or_(
                 AuditLog.action.ilike(pattern),
-                AuditLog.target.ilike(pattern)
+                AuditLog.target.ilike(pattern),
+                AuditLog.reason.ilike(pattern)
             )
         )
 
-    logs = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
+    logs = query.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
     return [{
         "id": str(l.id),
-        "actor_id": str(l.actor_id) if l.actor_id else "System / Automated",
+        "actor_id": str(l.actor_id) if l.actor_id else None,
+        "actor_role": getattr(l, "actor_role", None),
         "action": l.action,
         "target": l.target,
+        "resource_type": getattr(l, "resource_type", None),
+        "resource_id": getattr(l, "resource_id", None),
+        "event_id": getattr(l, "event_id", None),
+        "camera_id": getattr(l, "camera_id", None),
+        "zone_id": getattr(l, "zone_id", None),
         "before_state": l.before_state,
         "after_state": l.after_state,
+        "reason": getattr(l, "reason", None),
+        "success": getattr(l, "success", True),
+        "failure_code": getattr(l, "failure_code", None),
+        "request_id": getattr(l, "request_id", None),
+        "source": getattr(l, "source", "API"),
+        "metadata_json": getattr(l, "metadata_json", None),
         "created_at": l.created_at.isoformat() if l.created_at else None
     } for l in logs]
+

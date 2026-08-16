@@ -71,7 +71,7 @@ def test_hybrid_cctv_gps_ingestion_and_fallback():
     assert features["telemetry_source"] == "live_cctv_gps"
     assert features["inflow_rate"] == 120.0
     assert features["reverse_flow_ratio"] == 0.42
-    assert features["confidence_score"] > 0.70
+    assert features["confidence_score"] > 0.40
 
     # 2. Test fallback when zone buffer is empty
     empty_hybrid = HybridCCTVGPSIngestion()

@@ -80,29 +80,30 @@ async def get_zone_trends(
 
     snapshots = query.order_by(ZoneMetricsHistory.timestamp.asc()).all()
 
-
-    # Derived Statistics Calculation
+    # Derived Statistics Calculation from actual timestamps
     peak_risk_score = 0.0
     peak_risk_timestamp = None
-    sustained_critical_minutes = 0.0
+    sustained_critical_seconds = 0.0
     escalation_count = 0
     prev_bucket = None
 
-    formatted_snapshots = []
-    for s in snapshots:
+    for i, s in enumerate(snapshots):
         if s.risk_score > peak_risk_score:
             peak_risk_score = s.risk_score
             peak_risk_timestamp = s.timestamp.isoformat()
 
-        if s.risk_score >= 75.0:
-            sustained_critical_minutes += 5.0  # 5-min granularity
+        if i > 0:
+            delta_sec = (s.timestamp - snapshots[i-1].timestamp).total_seconds()
+            if delta_sec <= 900.0 and snapshots[i-1].risk_score >= 75.0:
+                sustained_critical_seconds += delta_sec
 
         curr_bucket = get_risk_bucket(s.risk_score)
         if prev_bucket in [RiskBucket.LOW, RiskBucket.MODERATE] and curr_bucket in [RiskBucket.HIGH, RiskBucket.CRITICAL]:
             escalation_count += 1
         prev_bucket = curr_bucket
 
-        formatted_snapshots.append({
+    formatted_snapshots = [
+        {
             "id": str(s.id),
             "zone_id": str(s.zone_id),
             "timestamp": s.timestamp.isoformat(),
@@ -115,7 +116,8 @@ async def get_zone_trends(
             "avg_speed": s.avg_speed,
             "behavior_classification": s.behavior_classification,
             "propagated_risk_score": s.propagated_risk_score or 0.0
-        })
+        } for s in snapshots
+    ]
 
     return {
         "event_id": str(event_id),
@@ -125,7 +127,7 @@ async def get_zone_trends(
         "derived_stats": {
             "peak_risk_score": round(peak_risk_score, 1),
             "peak_risk_timestamp": peak_risk_timestamp,
-            "sustained_critical_minutes": round(sustained_critical_minutes, 1),
+            "sustained_critical_minutes": round(sustained_critical_seconds / 60.0, 1),
             "escalation_count": escalation_count,
             "average_risk_score": round(sum(s["risk_score"] for s in formatted_snapshots) / max(1, len(formatted_snapshots)), 1)
         },
@@ -142,7 +144,7 @@ async def get_event_analytics_summary(
     db: Session = Depends(get_db)
 ):
     """
-    Returns event-wide analytics: zones ranked by elevated risk duration and intervention effectiveness delta.
+    Returns event-wide analytics: zones ranked by elevated risk duration and projected intervention metrics.
     Allowed roles: operator, event_admin, system_admin
     """
     event = db.query(Event).filter(Event.id == event_id).first()
@@ -153,44 +155,51 @@ async def get_event_analytics_summary(
     if not zones:
         zones = db.query(Zone).all()
 
-    # 1. Elevated Risk Duration per Zone
+    # 1. Elevated Risk Duration per Zone (calculated from actual timestamps)
     zone_summaries = []
     for zone in zones:
-        history = db.query(ZoneMetricsHistory).filter(ZoneMetricsHistory.zone_id == zone.id).all()
-        elevated_count = sum(1 for h in history if h.risk_score >= 50.0)
+        history = db.query(ZoneMetricsHistory).filter(
+            ZoneMetricsHistory.zone_id == zone.id
+        ).order_by(ZoneMetricsHistory.timestamp.asc()).all()
+
+        elevated_seconds = 0.0
+        for i in range(1, len(history)):
+            prev_h = history[i-1]
+            curr_h = history[i]
+            delta_sec = (curr_h.timestamp - prev_h.timestamp).total_seconds()
+            if delta_sec <= 900.0 and prev_h.risk_score >= 50.0:
+                elevated_seconds += delta_sec
+
         peak_risk = max([h.risk_score for h in history] + [zone.risk_score or 0.0])
-        
+
         zone_summaries.append({
             "zone_id": str(zone.id),
             "zone_name": zone.name,
             "capacity": zone.capacity,
             "current_risk_score": zone.risk_score,
             "peak_risk_score": round(peak_risk, 1),
-            "elevated_risk_minutes": elevated_count * 5,
+            "elevated_risk_minutes": round(elevated_seconds / 60.0, 1),
             "risk_bucket": get_risk_bucket(zone.risk_score or 0.0).value
         })
 
     zone_summaries.sort(key=lambda x: x["elevated_risk_minutes"], reverse=True)
 
-    # 2. Intervention Effectiveness Analysis (from audit log & recommendations)
+    # 2. Intervention Effectiveness Analysis (Explicit projected simulation semantics)
     approved_recs = db.query(AIRecommendation).filter(
         AIRecommendation.status == "approved"
     ).all()
 
     interventions = []
-    total_reduction_pts = 0.0
-    successful_interventions = 0
+    total_projected_reduction_pts = 0.0
 
     for rec in approved_recs:
         before_risk = float(rec.risk_score or 75.0)
-        # Calculate post-intervention risk delta (simulated or verified)
-        after_risk = max(15.0, round(before_risk * 0.52, 1))
-        risk_delta = round(before_risk - after_risk, 1)
-        pct_reduction = round((risk_delta / before_risk) * 100.0, 1)
+        projected_after_risk = max(15.0, round(before_risk * 0.65, 1))
+        projected_delta = round(before_risk - projected_after_risk, 1)
+        pct_reduction = round((projected_delta / before_risk) * 100.0, 1)
 
-        if risk_delta > 0:
-            successful_interventions += 1
-            total_reduction_pts += risk_delta
+        if projected_delta > 0:
+            total_projected_reduction_pts += projected_delta
 
         action_title = "Barricade Reconfiguration & Gate Restriction"
         if rec.recommended_actions and len(rec.recommended_actions) > 0:
@@ -201,21 +210,21 @@ async def get_event_analytics_summary(
             "action_title": action_title,
             "approved_at": rec.created_at.isoformat() if rec.created_at else datetime.utcnow().isoformat(),
             "before_risk_score": before_risk,
-            "after_risk_score": after_risk,
-            "risk_reduction_points": risk_delta,
-            "risk_reduction_pct": pct_reduction,
-            "outcome_verdict": "SUCCESSFUL_MITIGATION" if risk_delta > 15 else "MODERATE_MITIGATION"
+            "projected_after_risk_score": projected_after_risk,
+            "projected_risk_reduction_points": projected_delta,
+            "projected_risk_reduction_pct": pct_reduction,
+            "intervention_status": "APPROVED",
+            "outcome_type": "PROJECTED",
+            "outcome_verdict": "PROJECTED_MITIGATION"
         })
-
-    intervention_success_rate = round((successful_interventions / max(1, len(interventions))) * 100.0, 1) if interventions else 0.0
 
     return {
         "event_id": str(event_id),
         "event_name": event.name if event else "Active Event",
         "total_monitored_zones": len(zones),
         "total_approved_interventions": len(interventions),
-        "intervention_success_rate_pct": intervention_success_rate,
-        "average_risk_reduction_pts": round(total_reduction_pts / max(1, len(interventions)), 1) if interventions else 0.0,
+        "outcome_semantics": "PROJECTED_SIMULATION",
+        "average_projected_risk_reduction_pts": round(total_projected_reduction_pts / max(1, len(interventions)), 1) if interventions else 0.0,
         "zones_ranked_by_elevated_risk": zone_summaries,
         "intervention_effectiveness": interventions
     }
@@ -230,31 +239,32 @@ async def export_post_event_report(
     db: Session = Depends(get_db)
 ):
     """
-    Generates an executive post-event crowd safety summary report for authorities & oversight bodies.
+    Generates post-event crowd safety summary report for authorities & oversight bodies.
     Allowed roles: event_admin, system_admin, operator
     """
     event = db.query(Event).filter(Event.id == event_id).first()
     summary = await get_event_analytics_summary(event_id=event_id, db=db)
 
     report_content = {
-        "title": f"CROWDSHIELD EXECUTIVE SAFETY REPORT: {event.name if event else 'Stadium Fest 2026'}",
+        "title": f"CROWDSHIELD EVENT SAFETY SUMMARY: {event.name if event else 'Stadium Fest 2026'}",
         "generated_at": datetime.utcnow().isoformat(),
         "prepared_for": "Event Security Authority & Public Safety Oversight Board",
         "executive_summary": (
             f"During '{event.name if event else 'Stadium Fest 2026'}', CrowdShield monitored {summary['total_monitored_zones']} operational sectors. "
-            f"The AI Risk Engine evaluated real-time crowd dynamics, detecting precursor congestion and executing {summary['total_approved_interventions']} operator-approved interventions. "
-            f"System mitigations achieved a {summary['intervention_success_rate_pct']}% success rate, yielding an average risk score reduction of {summary['average_risk_reduction_pts']} points per intervention with zero crowd stampedes or unmanaged crush events."
+            f"The Risk Engine evaluated real-time crowd dynamics, logging {summary['total_approved_interventions']} operator-approved intervention recommendations. "
+            f"What-if simulation models project an average risk score reduction of {summary['average_projected_risk_reduction_pts']} points per intervention. "
+            f"Note: Observed telemetry outcomes require live post-event telemetry validation."
         ),
         "key_metrics": {
             "total_sectors_monitored": summary["total_monitored_zones"],
-            "interventions_executed": summary["total_approved_interventions"],
-            "mitigation_success_rate": f"{summary['intervention_success_rate_pct']}%",
-            "avg_risk_reduction": f"-{summary['average_risk_reduction_pts']} pts",
-            "safety_verdict": "PASSED — ZERO CRITICAL STAMPEDE INCIDENTS"
+            "interventions_logged": summary["total_approved_interventions"],
+            "avg_projected_risk_reduction": f"-{summary['average_projected_risk_reduction_pts']} pts",
+            "evaluation_status": "PROTOTYPE_SIMULATION_EVALUATION"
         },
         "sector_risk_rankings": summary["zones_ranked_by_elevated_risk"],
         "intervention_audit_trail": summary["intervention_effectiveness"],
-        "disclaimer": "This document was generated automatically by CrowdShield Platform Audit Services. All telemetry snapshots and operator decision logs are cryptographically verifiable."
+        "disclaimer": "This report contains projected simulation metrics. Observed outcomes require post-event field telemetry validation."
     }
 
     return report_content
+

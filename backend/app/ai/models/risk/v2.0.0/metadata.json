@@ -1,0 +1,41 @@
+{
+  "model_version": "v2.0.0",
+  "dataset_version": "v2.0",
+  "target": "EARLY_ESCALATION_5M",
+  "prediction_horizon_seconds": 300,
+  "feature_schema_version": "v2.0",
+  "training_source": "TELEMETRY_MIXED",
+  "label_type": "PROXY",
+  "ground_truth_status": "NOT_CLINICALLY_OR_OPERATIONALLY_VALIDATED",
+  "model_type": "TEMPORAL_XGBOOST",
+  "test_metrics": {
+    "accuracy": 0.9938,
+    "precision": 0.5,
+    "recall": 1.0,
+    "f1": 0.6667,
+    "roc_auc": 1.0,
+    "pr_auc": 1.0,
+    "brier_score": 0.0051,
+    "false_alarm_rate": 0.0062,
+    "false_negative_rate": 0.0,
+    "confusion_matrix": {
+      "tn": 160,
+      "fp": 1,
+      "fn": 0,
+      "tp": 1
+    },
+    "threshold": 0.05
+  },
+  "lead_time": {
+    "mean_lead_time_seconds": 29.3,
+    "median_lead_time_seconds": 29.3,
+    "min_lead_time_seconds": 29.3,
+    "max_lead_time_seconds": 29.3,
+    "warning_coverage": 1.0,
+    "lead_time_type": "PROXY_LEAD_TIME"
+  },
+  "selected_threshold": 0.05,
+  "generalization_status": "INSUFFICIENT_INDEPENDENT_EVENTS_FOR_GENERALIZATION",
+  "saved_at": "2026-08-14T21:00:31.593815+00:00",
+  "model_status": "PROTOTYPE"
+}

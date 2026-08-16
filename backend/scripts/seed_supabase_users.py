@@ -12,8 +12,10 @@ import app.models
 from app.core.database import SessionLocal, engine, Base
 from app.models.user import User, UserRoleEnum, AccountStatusEnum
 from app.core.security import hash_password
+from app.core.config import settings
 
-SUPABASE_DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_ID.supabase.co:5432/postgres")
+SUPABASE_DB_URL = settings.DATABASE_URL
+
 
 def seed_users():
     print("Connecting to Supabase PostgreSQL database...")

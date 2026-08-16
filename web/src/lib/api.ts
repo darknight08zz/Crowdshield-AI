@@ -1,4 +1,11 @@
 import { API_BASE_URL } from './constants';
+import { IncidentCanonicalData, IncidentTransitionRequestData } from '@/types/incident';
+import {
+  ResponseOfficer,
+  DispatchAssignment,
+  FieldOfficerAssignmentContext,
+  DispatchStatus,
+} from '@/types/dispatch';
 
 export interface ZoneData {
   id: string;
@@ -165,11 +172,26 @@ export interface SystemHealthData {
   };
 }
 
+function getAuthHeaders(overrideToken?: string, hasBody: boolean = false): Record<string, string> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (hasBody) {
+    headers['Content-Type'] = 'application/json';
+  }
+  let token = overrideToken;
+  if (!token && typeof window !== 'undefined') {
+    token = localStorage.getItem('token') || sessionStorage.getItem('token') || undefined;
+  }
+  if (token) {
+    headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export const api = {
   // 1. Overview Map & Zone Telemetry Data
   async fetchOverviewData(): Promise<{ event: any; zones: ZoneData[]; gates: GateData[] }> {
     try {
-      const res = await fetch(`${API_BASE_URL}/citizens/map-data`);
+      const res = await fetch(`${API_BASE_URL}/citizens/map-data`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -181,7 +203,7 @@ export const api = {
   // 2. Zone Risk Detail & XAI Explanation
   async fetchZoneRisk(zoneId: string) {
     try {
-      const res = await fetch(`${API_BASE_URL}/operator/zones/${zoneId}/risk`);
+      const res = await fetch(`${API_BASE_URL}/operator/zones/${zoneId}/risk`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -201,7 +223,7 @@ export const api = {
       return { adjacencies: [], propagation_graph: {} };
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/operator/events/${eventId}/adjacencies`);
+      const res = await fetch(`${API_BASE_URL}/operator/events/${eventId}/adjacencies`, { headers: getAuthHeaders() });
       if (!res.ok) return { adjacencies: [], propagation_graph: {} };
       return await res.json();
     } catch (e) {
@@ -215,7 +237,7 @@ export const api = {
       return [];
     }
     try {
-      const res = await fetch(`${API_BASE_URL}/operator/events/${eventId}/barricades`);
+      const res = await fetch(`${API_BASE_URL}/operator/events/${eventId}/barricades`, { headers: getAuthHeaders() });
       if (!res.ok) return [];
       return await res.json();
     } catch (e) {
@@ -228,7 +250,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/operator/barricades/${barricadeId}/reconfigure`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({ current_configuration }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -241,7 +263,7 @@ export const api = {
 
   async fetchZoneDensityGrid(zoneId: string, rows: number = 10, cols: number = 10): Promise<DensityGridData> {
     try {
-      const res = await fetch(`${API_BASE_URL}/operator/zones/${zoneId}/density-grid?grid_rows=${rows}&grid_cols=${cols}`);
+      const res = await fetch(`${API_BASE_URL}/operator/zones/${zoneId}/density-grid?grid_rows=${rows}&grid_cols=${cols}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -268,7 +290,7 @@ export const api = {
   async fetchZoneRecommendation(zoneId: string, lang?: string): Promise<RecommendationData> {
     try {
       const url = `${API_BASE_URL}/operator/zones/${zoneId}/recommendation${lang ? `?lang=${lang}` : ''}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -282,7 +304,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/operator/zones/${zoneId}/simulate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({ proposed_action: proposedAction }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -304,7 +326,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/operator/recommendations/${recommendationId}/decide`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({
           status: decision,
           modified_action: modifiedAction,
@@ -323,7 +345,7 @@ export const api = {
   // 6. Fetch Incidents
   async fetchIncidents(): Promise<IncidentData[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/citizens/incidents`);
+      const res = await fetch(`${API_BASE_URL}/citizens/incidents`, { headers: getAuthHeaders() });
       if (!res.ok) return [];
       return await res.json();
     } catch (e) {
@@ -337,7 +359,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/citizens/incidents/${incidentId}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -351,7 +373,7 @@ export const api = {
   // 8. Fetch Officers Roster
   async fetchOfficers(): Promise<OfficerData[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/officers`);
+      const res = await fetch(`${API_BASE_URL}/admin/officers`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const raw = await res.json();
       return (raw || []).map((off: any) => ({
@@ -380,7 +402,7 @@ export const api = {
 
   async fetchEvents(): Promise<EventData[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/events`);
+      const res = await fetch(`${API_BASE_URL}/admin/events`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -393,7 +415,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/events/${eventId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -406,7 +428,7 @@ export const api = {
 
   async fetchAdminZones(): Promise<ZoneData[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/zones`);
+      const res = await fetch(`${API_BASE_URL}/admin/zones`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -419,7 +441,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/zones`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -434,7 +456,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/zones/${zoneId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -447,7 +469,7 @@ export const api = {
 
   async deleteZone(zoneId: string) {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/zones/${zoneId}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/admin/zones/${zoneId}`, { method: 'DELETE', headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -458,7 +480,7 @@ export const api = {
 
   async fetchAdminGates(): Promise<GateData[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/gates`);
+      const res = await fetch(`${API_BASE_URL}/admin/gates`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -471,7 +493,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/gates`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({ ...payload, status: payload.status || 'open' }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -486,7 +508,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/gates/${gateId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -499,7 +521,7 @@ export const api = {
 
   async deleteGate(gateId: string) {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/gates/${gateId}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/admin/gates/${gateId}`, { method: 'DELETE', headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -510,7 +532,7 @@ export const api = {
 
   async fetchAdminOfficers(): Promise<any[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/officers`);
+      const res = await fetch(`${API_BASE_URL}/admin/officers`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -536,7 +558,7 @@ export const api = {
 
   async fetchNotificationPolicy(): Promise<Record<string, NotificationPolicyRule>> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/notification-policy`);
+      const res = await fetch(`${API_BASE_URL}/admin/notification-policy`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -549,7 +571,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/notification-policy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify(policy),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -570,7 +592,7 @@ export const api = {
       if (search) queryParams.append('search', search);
       if (role) queryParams.append('role', role);
 
-      const res = await fetch(`${API_BASE_URL}/admin/users?${queryParams.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/admin/users?${queryParams.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -583,7 +605,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/users/invite`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -601,7 +623,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({ role }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -616,7 +638,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(undefined, true),
         body: JSON.stringify({ is_active: isActive }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -629,7 +651,10 @@ export const api = {
 
   async resetUserPassword(userId: string) {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-password`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -640,7 +665,7 @@ export const api = {
 
   async fetchRbacMatrix(): Promise<RbacMatrixItem[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/rbac-matrix`);
+      const res = await fetch(`${API_BASE_URL}/admin/rbac-matrix`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -651,7 +676,7 @@ export const api = {
 
   async fetchSystemHealth(): Promise<SystemHealthData> {
     try {
-      const res = await fetch(`${API_BASE_URL}/health`);
+      const res = await fetch(`${API_BASE_URL}/health`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -666,7 +691,7 @@ export const api = {
       if (search) params.append('search', search);
       if (action) params.append('action', action);
 
-      const res = await fetch(`${API_BASE_URL}/admin/audit-logs?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/admin/audit-logs?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -685,7 +710,7 @@ export const api = {
       if (zoneId) params.append('zone_id', zoneId);
       params.append('hours', hours.toString());
 
-      const res = await fetch(`${API_BASE_URL}/events/${eventId}/analytics/zone-trends?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/events/${eventId}/analytics/zone-trends?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -696,7 +721,7 @@ export const api = {
 
   async fetchEventAnalyticsSummary(eventId: string) {
     try {
-      const res = await fetch(`${API_BASE_URL}/events/${eventId}/analytics/summary`);
+      const res = await fetch(`${API_BASE_URL}/events/${eventId}/analytics/summary`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -707,7 +732,7 @@ export const api = {
 
   async exportPostEventReport(eventId: string) {
     try {
-      const res = await fetch(`${API_BASE_URL}/events/${eventId}/analytics/export-report`);
+      const res = await fetch(`${API_BASE_URL}/events/${eventId}/analytics/export-report`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (e) {
@@ -715,5 +740,307 @@ export const api = {
       throw e;
     }
   },
+
+  // ==========================================
+  // PHASE 6B REALTIME INFERENCE REST SNAPSHOTS
+  // ==========================================
+
+  async fetchCameraInference(cameraId: string, token?: string): Promise<RealtimeInferenceResultData | null> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/cameras/${cameraId}/inference`, { headers });
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchCameraInference error for camera ${cameraId}:`, e);
+      throw e;
+    }
+  },
+
+  async fetchZoneInference(cameraId: string, zoneId: string, token?: string): Promise<RealtimeInferenceResultData | null> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/cameras/${cameraId}/zones/${zoneId}/inference`, { headers });
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchZoneInference error for camera ${cameraId} zone ${zoneId}:`, e);
+      throw e;
+    }
+  },
+
+  async fetchEventMapConfiguration(eventId: string) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/operator/events/${eventId}/map`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchEventMapConfiguration error for event ${eventId}:`, e);
+      return null;
+    }
+  },
+
+  // ==========================================
+  // PHASE 6D.1 / 6D.2 CANONICAL INCIDENT APIS
+  // ==========================================
+
+  async fetchCanonicalIncidents(
+    params?: { event_id?: string; zone_id?: string; camera_id?: string; status?: string },
+    token?: string
+  ): Promise<IncidentCanonicalData[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params?.event_id) query.append('event_id', params.event_id);
+      if (params?.zone_id) query.append('zone_id', params.zone_id);
+      if (params?.camera_id) query.append('camera_id', params.camera_id);
+      if (params?.status && params.status !== 'ALL') query.append('status', params.status);
+
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/incidents?${query.toString()}`, { headers });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('API fetchCanonicalIncidents error:', e);
+      return [];
+    }
+  },
+
+  async fetchCanonicalIncident(incidentId: string, token?: string): Promise<IncidentCanonicalData> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/incidents/${incidentId}`, { headers });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchCanonicalIncident error for '${incidentId}':`, e);
+      throw e;
+    }
+  },
+
+  async transitionIncidentStatus(
+    incidentId: string,
+    payload: IncidentTransitionRequestData,
+    token?: string
+  ): Promise<IncidentCanonicalData> {
+    try {
+      const headers = getAuthHeaders(token, true);
+      const res = await fetch(`${API_BASE_URL}/operator/incidents/${incidentId}/transition`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const err: any = new Error(errJson.detail || `HTTP ${res.status}`);
+        err.status = res.status;
+        err.detail = errJson.detail;
+        throw err;
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API transitionIncidentStatus error for '${incidentId}':`, e);
+      throw e;
+    }
+  },
+
+  // ------------------------------------------------------------------
+  // Phase 6D.3 — Dispatch & Field Officer Action Center
+  // ------------------------------------------------------------------
+  async fetchResponseOfficers(eventId: string = 'evt_01', token?: string): Promise<ResponseOfficer[]> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/response-officers?event_id=${eventId}`, { headers });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.error('API fetchResponseOfficers error:', e);
+      return [];
+    }
+  },
+
+  async fetchIncidentDispatches(incidentId: string, token?: string): Promise<DispatchAssignment[]> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/incidents/${incidentId}/dispatches`, { headers });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchIncidentDispatches error for '${incidentId}':`, e);
+      return [];
+    }
+  },
+
+  async createDispatchAssignment(
+    incidentId: string,
+    payload: { officer_id: string; eta_minutes?: number; reason: string },
+    token?: string
+  ): Promise<DispatchAssignment> {
+    try {
+      const headers = getAuthHeaders(token, true);
+      const res = await fetch(`${API_BASE_URL}/operator/incidents/${incidentId}/dispatch`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API createDispatchAssignment error for '${incidentId}':`, e);
+      throw e;
+    }
+  },
+
+  async fetchDispatchDetail(dispatchId: string, token?: string): Promise<DispatchAssignment> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/operator/dispatches/${dispatchId}`, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchDispatchDetail error for '${dispatchId}':`, e);
+      throw e;
+    }
+  },
+
+  async transitionDispatchStatus(
+    dispatchId: string,
+    payload: { new_status: DispatchStatus; reason?: string },
+    token?: string
+  ): Promise<DispatchAssignment> {
+    try {
+      const headers = getAuthHeaders(token, true);
+      const res = await fetch(`${API_BASE_URL}/operator/dispatches/${dispatchId}/transition`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API transitionDispatchStatus error for '${dispatchId}':`, e);
+      throw e;
+    }
+  },
+
+  async fetchMyFieldDispatches(token?: string): Promise<DispatchAssignment[]> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/officers/dispatches`, { headers });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.error('API fetchMyFieldDispatches error:', e);
+      return [];
+    }
+  },
+
+  async fetchFieldDispatchContext(dispatchId: string, token?: string): Promise<FieldOfficerAssignmentContext> {
+    try {
+      const headers = getAuthHeaders(token);
+      const res = await fetch(`${API_BASE_URL}/officers/dispatches/${dispatchId}`, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error(`API fetchFieldDispatchContext error for '${dispatchId}':`, e);
+      throw e;
+    }
+  },
+
+  async transitionFieldDispatchStatus(
+    dispatchId: string,
+    payload: { new_status: DispatchStatus; reason?: string },
+    token?: string
+  ): Promise<DispatchAssignment> {
+    try {
+      const headers = getAuthHeaders(token, true);
+      const res = await fetch(`${API_BASE_URL}/officers/dispatches/${dispatchId}/transition`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`API transitionFieldDispatchStatus error for '${dispatchId}':`, e);
+      throw e;
+    }
+  },
 };
+
+export interface RealtimeTelemetryData {
+  person_count: number;
+  tracked_person_count: number;
+  density: number;
+  average_speed: number;
+  median_speed: number;
+  inflow_rate: number;
+  outflow_rate: number;
+  flow_imbalance: number;
+  net_accumulation: number;
+  direction_conflict_score: number;
+  reverse_flow_ratio: number;
+  blockage_score: number;
+}
+
+export interface RealtimeProvenanceData {
+  model_version: string;
+  model_status: string;
+  label_type: string;
+  ground_truth_status: string;
+  generalization_status: string;
+  target: string;
+  target_version: string;
+  horizon_seconds: number;
+  processing_mode?: string;
+  telemetry_source?: string;
+  calibration_status?: string;
+  is_degraded?: boolean;
+  is_synthetic?: boolean;
+  is_simulated?: boolean;
+}
+
+export type ModelProvenance = RealtimeProvenanceData;
+
+export interface RealtimeInferenceResultData {
+  event_id: string;
+  camera_id: string;
+  zone_id: string;
+  current_risk_score: number;
+  current_physics_risk?: number;
+  ai_probability: number | null;
+  operational_warning_state: 'NORMAL' | 'WATCH' | 'EARLY_WARNING' | 'HIGH_RISK' | 'DEGRADED' | 'WARMING_UP';
+  ai_status: 'SUCCESS' | 'WARMING_UP' | 'AI_UNAVAILABLE' | 'CAMERA_OFFLINE';
+  camera_health_status: 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'CV_UNAVAILABLE';
+  is_stale: boolean;
+  history_ready: boolean;
+  telemetry: RealtimeTelemetryData;
+  provenance: RealtimeProvenanceData;
+  disclaimer: string;
+  telemetry_timestamp: string;
+  prediction_timestamp: string;
+  warning_timestamp: string;
+  warning_reason?: string;
+}
+
 

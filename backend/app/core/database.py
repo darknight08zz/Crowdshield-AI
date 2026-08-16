@@ -1,7 +1,11 @@
 from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from supabase import create_client, Client
+try:
+    from supabase import create_client, Client
+except ImportError:
+    create_client = None
+    Client = None
 
 from app.core.config import settings
 
@@ -10,8 +14,10 @@ engine_kwargs = {"pool_pre_ping": True}
 if "sqlite" in settings.DATABASE_URL:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
+    engine_kwargs["pool_size"] = getattr(settings, "DATABASE_POOL_SIZE", 10)
+    engine_kwargs["max_overflow"] = getattr(settings, "DATABASE_MAX_OVERFLOW", 20)
+    engine_kwargs["pool_timeout"] = getattr(settings, "DATABASE_POOL_TIMEOUT", 30)
+    engine_kwargs["pool_recycle"] = getattr(settings, "DATABASE_POOL_RECYCLE", 1800)
 
 engine = create_engine(
     settings.DATABASE_URL,

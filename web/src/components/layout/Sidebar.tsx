@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Target, AlertTriangle, Users, CheckCircle2, Sliders, ShieldCheck, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Target, AlertTriangle, Users, CheckCircle2, Sliders, ShieldCheck, TrendingUp, UserCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Sidebar() {
@@ -14,6 +14,7 @@ export function Sidebar() {
     { label: 'Zone Detail & AI', href: '/zones/z-1', icon: Target },
     { label: 'Trend Analytics', href: '/analytics', icon: TrendingUp },
     { label: 'Incidents Stream', href: '/incidents', icon: AlertTriangle, badge: '2' },
+    { label: 'Field Response Action', href: '/field', icon: UserCheck },
     { label: 'Field Officers', href: '/officers', icon: Users },
     { label: 'Verify & Results', href: '/verify', icon: CheckCircle2 },
   ];

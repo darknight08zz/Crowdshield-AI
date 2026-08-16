@@ -55,8 +55,9 @@ def predict_risk(feature_dict: Dict[str, float]) -> Dict[str, float]:
     """
     model = get_model()
 
-    # Format input row dataframe matching exact feature schema
-    input_df = pd.DataFrame([feature_dict])[FEATURE_NAMES]
+    # Format input row dataframe matching exact feature schema with fallback defaults
+    full_feats = {**SAFE_BASELINES, **feature_dict}
+    input_df = pd.DataFrame([full_feats])[FEATURE_NAMES]
     current_risk = float(model.predict(input_df)[0])
     current_risk = float(max(0.0, min(100.0, current_risk)))
 

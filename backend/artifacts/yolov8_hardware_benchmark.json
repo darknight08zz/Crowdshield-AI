@@ -1,0 +1,25 @@
+{
+  "hardware": {
+    "pytorch_version": "2.12.0+cpu",
+    "cuda_available": false,
+    "gpu_count": 0,
+    "gpu_name": "N/A (No NVIDIA CUDA GPU Detected)",
+    "operational_resolution": "1280x720"
+  },
+  "benchmarks": {
+    "pytorch_cpu": {
+      "status": "COMPLETED",
+      "mean_latency_ms": 87.2,
+      "p95_latency_ms": 105.41,
+      "throughput_fps": 11.47
+    },
+    "pytorch_gpu_cuda": {
+      "status": "NOT_AVAILABLE",
+      "reason": "No CUDA hardware present on host machine."
+    },
+    "openvino_cpu": {
+      "status": "OMITTED",
+      "reason": "No module named 'openvino'"
+    }
+  }
+}

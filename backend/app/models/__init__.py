@@ -2,8 +2,16 @@ from app.models.user import User, UserRoleEnum, AccountStatusEnum
 from app.models.event import Event
 from app.models.zone import Zone
 from app.models.gate import Gate, GateTypeEnum, GateStatusEnum
-from app.models.incident import Incident, IncidentStatusEnum
+from app.models.incident import Incident, IncidentTransition, IncidentStatusEnum
 from app.models.assignment import OfficerAssignment, AssignmentStatusEnum
+from app.models.dispatch import (
+    ResponseOfficer,
+    DispatchAssignment,
+    DispatchTransition,
+    OfficerStatusEnum,
+    LocationStatusEnum,
+    DispatchStatusEnum,
+)
 from app.models.recommendation import AIRecommendation, RecommendationStatusEnum
 from app.models.audit import AuditLog
 from app.models.alert import Alert, AlertSeverityEnum
@@ -24,9 +32,16 @@ __all__ = [
     "GateTypeEnum",
     "GateStatusEnum",
     "Incident",
+    "IncidentTransition",
     "IncidentStatusEnum",
     "OfficerAssignment",
     "AssignmentStatusEnum",
+    "ResponseOfficer",
+    "DispatchAssignment",
+    "DispatchTransition",
+    "OfficerStatusEnum",
+    "LocationStatusEnum",
+    "DispatchStatusEnum",
     "AIRecommendation",
     "RecommendationStatusEnum",
     "AuditLog",
@@ -41,4 +56,3 @@ __all__ = [
     "BarricadeConfigurationEnum",
     "ZoneMetricsHistory",
 ]
-

@@ -95,8 +95,9 @@ def test_get_event_analytics_summary_and_report(db_session):
     assert summary["event_id"] == str(event_id)
     assert len(summary["zones_ranked_by_elevated_risk"]) >= 1
     assert len(summary["intervention_effectiveness"]) >= 1
-    assert summary["intervention_success_rate_pct"] > 0
+    assert summary["outcome_semantics"] == "PROJECTED_SIMULATION"
 
     report = asyncio.run(export_post_event_report(event_id=event_id, db=db_session))
-    assert "CROWDSHIELD EXECUTIVE SAFETY REPORT" in report["title"]
-    assert report["key_metrics"]["safety_verdict"] == "PASSED — ZERO CRITICAL STAMPEDE INCIDENTS"
+    assert "CROWDSHIELD EVENT SAFETY SUMMARY" in report["title"]
+    assert report["key_metrics"]["evaluation_status"] == "PROTOTYPE_SIMULATION_EVALUATION"
+

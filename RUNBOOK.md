@@ -35,25 +35,36 @@ graph TD
 
 ## 1. Backend Setup (`/backend`)
 
-### Environment Variables (`backend/.env`)
-Create a `.env` file inside `backend/`:
-```env
-ENV=development
-HOST=0.0.0.0
-PORT=8000
+### Environment Variables & Local Setup
+1. Copy `.env.example` to `.env` inside `backend/` (and root / `web/.env.local` / `mobile/.env`):
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill in real local/Supabase credentials in `.env` (never commit `.env`).
+3. Verify environment loading & Supabase connectivity:
+   ```bash
+   python scripts/check_env_config.py
+   ```
+4. Configuration variables structure (`backend/.env`):
+   ```env
+   ENV=development
+   HOST=0.0.0.0
+   PORT=8000
+   CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:3000
 
-# PostgreSQL Connection
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+   # Database Connection (SQLite default for local dev, PostgreSQL for production)
+   DATABASE_URL=sqlite:///./crowdshield.db
 
-# Supabase Auth Integration
-SUPABASE_URL=https://<your-project>.supabase.co
-SUPABASE_ANON_KEY=<your-anon-key>
-SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
-SUPABASE_JWT_SECRET=<your-jwt-secret>
+   # Supabase Auth & Service Credentials (Fill locally)
+   SUPABASE_URL=https://<your-project>.supabase.co
+   SUPABASE_ANON_KEY=<your-anon-key>
+   SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+   SUPABASE_JWT_SECRET=<your-jwt-secret>
 
-# FCM Push Notifications (Optional)
-FIREBASE_CREDENTIALS_PATH=./firebase-service-account.json
-```
+   # FCM Push Notifications (Optional)
+   FIREBASE_CREDENTIALS_PATH=
+   ```
+
 
 ### Installation & Launch Commands
 ```bash

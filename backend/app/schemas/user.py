@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, ConfigDict
 from app.models.user import UserRoleEnum, AccountStatusEnum
 
 
 class UserBase(BaseModel):
     name: str
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     role: UserRoleEnum = UserRoleEnum.CITIZEN
     account_status: Optional[str] = AccountStatusEnum.ACTIVE.value

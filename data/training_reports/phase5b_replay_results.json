@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "total_steps": 162,
+  "average_latency_ms": 52.208,
+  "p95_latency_ms": 86.217,
+  "state_distribution": {
+    "NORMAL": 133,
+    "WARMING_UP": 29
+  },
+  "model_failure_handling": "VERIFIED_AI_UNAVAILABLE",
+  "persistence_intermittent_reset": "VERIFIED_RESET"
+}

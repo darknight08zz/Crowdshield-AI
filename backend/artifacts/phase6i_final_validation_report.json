@@ -1,0 +1,83 @@
+{
+  "timestamp": "2026-08-16T10:29:01.346176+00:00",
+  "repository": "darknight08zz/CrowdShield",
+  "phase": "PHASE_6I_FINAL_SYSTEM_CERTIFICATION",
+  "system_status": "CERTIFIED_ENGINEERING_PROTOTYPE",
+  "validation_verdict": "CERTIFIED_FOR_DEMO",
+  "test_counts": {
+    "backend_pytest_total": 240,
+    "backend_pytest_passed": 240,
+    "backend_pytest_failed": 0,
+    "smoke_test_total": 5,
+    "smoke_test_passed": 5
+  },
+  "performance": {
+    "validation_host": "AMD Ryzen 5 5500U (6C/12T), Integrated Radeon Graphics, CUDA Unavailable",
+    "fps_640x640": 11.69,
+    "latency_ms_640x640": 85.52,
+    "fps_320x320": 20.27,
+    "latency_ms_320x320": 49.33,
+    "qualification": "Empirical measurements of validation host hardware. Input resolution 320x320 is an operational trade-off."
+  },
+  "live_video_validation": {
+    "status": "PASSED",
+    "frames_processed": 45,
+    "pipeline_stages_verified": "10/10"
+  },
+  "temporal_ai_validation": {
+    "status": "PASSED",
+    "warmup_observations_required": 30,
+    "numeric_output_produced": true
+  },
+  "incident_validation": {
+    "policy_gating": "PASSED",
+    "deduplication": "PASSED",
+    "operator_workflow": "PASSED"
+  },
+  "dispatch_validation": {
+    "status": "PASSED",
+    "officer_progression": "PASSED",
+    "incident_isolation": "PASSED"
+  },
+  "security_validation": {
+    "rbac": "PASSED",
+    "fail_closed_authorization": "PASSED",
+    "ownership_isolation": "PASSED"
+  },
+  "audit_validation": {
+    "request_id_correlation": "PASSED",
+    "immutable_audit_logging": "PASSED"
+  },
+  "resilience_validation": {
+    "database_fallback": "PASSED",
+    "ai_exception_degraded_mode": "PASSED",
+    "camera_offline_mode": "PASSED",
+    "persistence_queue_resilience": "PASSED"
+  },
+  "deployment_validation": {
+    "native_powershell_scripts": "PASSED",
+    "zero_docker_compliance": "PASSED",
+    "lightweight_health_probe": "PASSED",
+    "readiness_diagnostics": "PASSED",
+    "lossless_queue_drain_shutdown": "PASSED"
+  },
+  "frontend_validation": {
+    "typescript_compilation": "PASSED (0 errors)",
+    "nextjs_production_build": "PASSED (21 static/dynamic pages compiled)"
+  },
+  "known_limitations": [
+    "AI model remains a prototype trained on physics-defined proxy labels.",
+    "No independent clinical or real-world crowd-disaster ground truth validation.",
+    "No certification of real-world stampede prediction or operational safety efficacy.",
+    "Performance is hardware dependent (AMD Ryzen 5 5500U CPU benchmarked).",
+    "Input resolution 320x320 increases throughput (~20 FPS) but trades off spatial detection precision.",
+    "Camera calibration (tilt, angle, height) directly impacts real-world telemetry precision."
+  ],
+  "provenance": {
+    "model_status": "PROTOTYPE",
+    "label_type": "PHYSICS_DEFINED_PROXY",
+    "ground_truth_status": "NOT_CLINICALLY_OR_OPERATIONALLY_VALIDATED",
+    "generalization_status": "INSUFFICIENT_INDEPENDENT_EVENTS_FOR_GENERALIZATION",
+    "notice": "AI Early Warning \u2014 Prototype. Physics-defined proxy model, not operationally validated."
+  }
+}

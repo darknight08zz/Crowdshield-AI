@@ -97,15 +97,18 @@ def test_mock_push_notifications(phase3_db):
 
     # Test direct multicast push
     res1 = send_fcm_multicast(tokens=["fake_token"], title="Test", body="Body")
-    assert res1["success"] is True
+    assert res1["status"] == "MOCK"
+    assert res1["success"] is False
+    assert res1["requested_count"] == 1
 
     # Test zone citizen push
     res2 = notify_zone_citizens(zone_id=zone_id, title="Alert", body="Test Advisory", db=db)
-    assert res2["sent_count"] > 0
+    assert res2["requested_count"] > 0
 
     # Test officer push
     res3 = notify_field_officers(officer_ids=[officer_id], title="Task", body="New Assignment", db=db)
-    assert res3["sent_count"] > 0
+    assert res3["requested_count"] > 0
+
 
 
 def test_dispatch_approved_action_workflow(phase3_db):

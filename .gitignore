@@ -1,8 +1,10 @@
 # Environment variables
 .env
-.env*
+.env.*
 .env.local
 .env.*.local
+!.env.example
+
 
 # Credentials & Keys
 *-firebase-adminsdk-*.json
@@ -26,6 +28,7 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+backend/data/
 
 # Node / JS / Web / Mobile
 node_modules/
@@ -40,6 +43,11 @@ build/
 out/
 .vercel
 
+# Logs & Diagnostics
+logs/
+*.log
+backend/logs/
+
 # Operating Systems
 .DS_Store
 Thumbs.db
@@ -49,3 +57,4 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+

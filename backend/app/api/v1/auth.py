@@ -5,11 +5,11 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
-
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
+    jwt,
+    JWTError,
     get_current_user,
     UserPayload,
     hash_password,
@@ -20,7 +20,7 @@ from app.core.security import (
     JWT_SECRET_KEY,
     ALGORITHM
 )
-from app.core.rate_limiter import login_rate_limiter, reset_rate_limiter
+from app.core.rate_limiter import login_rate_limiter, reset_rate_limiter, signup_rate_limiter
 from app.core.audit import log_audit_event
 from app.models.user import User, UserRoleEnum, AccountStatusEnum
 from app.models.invitation import UserInvitation
@@ -42,6 +42,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication & Sessions"])
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 async def citizen_signup(
     payload: CitizenSignupRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -49,6 +50,9 @@ async def citizen_signup(
     STRICT SECURITY RULE: Only the 'citizen' role is permitted for public self-signup.
     Staff roles (field_officer, operator, event_admin, system_admin) are strictly forbidden.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    signup_rate_limiter.check_rate_limit(f"signup:{client_ip}")
+
     requested_role = (payload.role or "citizen").lower()
     if requested_role != UserRoleEnum.CITIZEN.value:
         raise HTTPException(
@@ -73,9 +77,9 @@ async def citizen_signup(
                 detail="An account with this phone number already exists."
             )
 
-    # Create new citizen account
+    # Create new citizen account with dynamically generated 6-digit OTP
     user_id = uuid4()
-    otp = "654321"  # Simulated email/OTP verification code
+    otp = f"{secrets.randbelow(900000) + 100000:06d}"
     user = User(
         id=user_id,
         name=payload.name,
@@ -129,12 +133,13 @@ async def verify_otp(
     if not user:
         raise HTTPException(status_code=404, detail="Account not found.")
 
-    if user.verification_otp and user.verification_otp != payload.otp and payload.otp != "654321":
+    if user.verification_otp and user.verification_otp != payload.otp:
         raise HTTPException(status_code=400, detail="Invalid verification OTP.")
 
     user.account_status = AccountStatusEnum.ACTIVE.value
     user.verification_otp = None
     db.commit()
+
 
     log_audit_event(
         db=db,
