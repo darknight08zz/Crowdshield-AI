@@ -29,7 +29,7 @@ class Incident(Base):
     incident_id = Column(String(64), unique=True, index=True, nullable=False)
     event_id = Column(String(64), index=True, nullable=False, default="evt_01")
     camera_id = Column(String(64), index=True, nullable=True)
-    zone_id = Column(String(64), index=True, nullable=False)
+    zone_id = Column(String(64), index=True, nullable=True)
 
     # Legacy fields for citizen reporting compatibility
     reporter_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

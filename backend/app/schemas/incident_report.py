@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 class IncidentReportCreate(BaseModel):
     title: str = Field(..., min_length=3, max_length=255, description="Brief summary of the observed issue")
     description: str = Field(..., min_length=5, description="Detailed description of the incident/observation")
-    event_id: Optional[str] = Field("evt_01", description="Event identifier")
+    event_id: Optional[str] = Field(None, description="Event identifier")
     zone_id: Optional[str] = Field(None, description="Zone identifier if known")
     camera_id: Optional[str] = Field(None, description="Camera identifier if relevant")
     reported_location: Optional[str] = Field(None, description="Geospatial or location context")
@@ -17,6 +17,7 @@ class IncidentReportCreate(BaseModel):
 class IncidentReportReview(BaseModel):
     status: str = Field(..., description="Target review status: UNDER_REVIEW, ACCEPTED, or REJECTED")
     review_reason: Optional[str] = Field(None, description="Review notes or justification (Required for REJECTED)")
+    zone_id: Optional[str] = Field(None, description="Optional valid zone ID to assign when accepting report")
 
 
 class IncidentReportResponse(BaseModel):

@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS incident_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     report_id VARCHAR(64) UNIQUE NOT NULL,
-    event_id VARCHAR(64) NOT NULL DEFAULT 'evt_01',
+    event_id VARCHAR(64) NOT NULL,
     zone_id VARCHAR(64),
     camera_id VARCHAR(64),
     submitted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL NOT NULL,

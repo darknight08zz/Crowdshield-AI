@@ -1,6 +1,7 @@
 import enum
 from datetime import datetime
 import uuid
+from typing import Dict, Set
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -15,12 +16,28 @@ class IncidentReportStatusEnum(str, enum.Enum):
     REJECTED = "REJECTED"
 
 
+# Canonical explicit transition map for IncidentReport
+VALID_INCIDENT_REPORT_TRANSITIONS: Dict[str, Set[str]] = {
+    IncidentReportStatusEnum.REPORT_SUBMITTED.value: {
+        IncidentReportStatusEnum.UNDER_REVIEW.value,
+        IncidentReportStatusEnum.ACCEPTED.value,
+        IncidentReportStatusEnum.REJECTED.value,
+    },
+    IncidentReportStatusEnum.UNDER_REVIEW.value: {
+        IncidentReportStatusEnum.ACCEPTED.value,
+        IncidentReportStatusEnum.REJECTED.value,
+    },
+    IncidentReportStatusEnum.ACCEPTED.value: set(),
+    IncidentReportStatusEnum.REJECTED.value: set(),
+}
+
+
 class IncidentReport(Base):
     __tablename__ = "incident_reports"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     report_id = Column(String(64), unique=True, index=True, nullable=False)
-    event_id = Column(String(64), index=True, nullable=False, default="evt_01")
+    event_id = Column(String(64), index=True, nullable=False)
     zone_id = Column(String(64), nullable=True)
     camera_id = Column(String(64), nullable=True)
 
