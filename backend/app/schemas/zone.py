@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 class ZoneBase(BaseModel):
-    event_id: UUID
+    event_id: Optional[Any] = Field(default=None, description="Parent Event UUID")
     name: str
     capacity: int = Field(gt=0, description="Maximum occupant capacity of zone")
     current_density: float = Field(ge=0.0, default=0.0)
@@ -24,6 +24,7 @@ class ZoneUpdateDensity(BaseModel):
 
 class ZoneResponse(ZoneBase):
     id: UUID
+    event_id: UUID
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

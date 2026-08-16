@@ -146,12 +146,25 @@ async def create_zone(
     db: Session = Depends(get_db),
     current_user: UserPayload = Depends(require_role("event_admin", "system_admin"))
 ):
-    event = db.query(Event).filter(Event.id == payload.event_id).first() if is_valid_uuid(payload.event_id) else None
+    if not payload.event_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="event_id is required when creating a zone."
+        )
+
+    if not is_valid_uuid(payload.event_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid event_id format."
+        )
+
+    event_uuid = UUID(str(payload.event_id))
+    event = db.query(Event).filter(Event.id == event_uuid).first()
     if not event:
-        # Fallback to first event if not explicit UUID
-        event = db.query(Event).first()
-        if not event:
-            raise HTTPException(status_code=404, detail="Parent Event not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Parent Event not found."
+        )
 
     zone = Zone(
         event_id=event.id,
