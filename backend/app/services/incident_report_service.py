@@ -28,6 +28,38 @@ def generate_incident_id() -> str:
     return f"INC-{date_str}-{unique_suffix}"
 
 
+def is_event_active(event: Event) -> bool:
+    """
+    Checks if an Event instance has an active/eligible operational status.
+    Active status values include 'active', 'ongoing', 'live' (case-insensitive).
+    """
+    if not event or not getattr(event, "status", None):
+        return False
+    status_str = str(event.status).strip().lower()
+    return status_str in ("active", "ongoing", "live")
+
+
+def resolve_current_active_event(db: Session, user: UserPayload) -> Optional[Event]:
+    """
+    Resolves the canonical current active event from the database.
+    Note: CrowdShield does not currently model individual Viewer-to-Event ownership tables.
+    All Viewers operate within the public active event context.
+
+    Filters strictly for events with active status ('active', 'ongoing', 'live').
+    Returns the single most recent active Event deterministically, or None if no active event is present.
+    NEVER selects arbitrary or inactive events via naive .first().
+    """
+    active_events = (
+        db.query(Event)
+        .filter(Event.status.in_(["active", "ACTIVE", "ongoing", "ONGOING", "live", "LIVE"]))
+        .order_by(Event.created_at.desc(), Event.date.desc())
+        .all()
+    )
+    if active_events:
+        return active_events[0]
+    return None
+
+
 def validate_event_exists(db: Session, event_identifier: str) -> Optional[Event]:
     """Validates if an Event exists by UUID string, UUID object, or name string."""
     if not event_identifier:
@@ -78,7 +110,7 @@ def sanitize_media_url(media_url: Optional[str]) -> Optional[str]:
     url = str(media_url).strip()
     if not url:
         return None
-    
+
     forbidden_prefixes = ("file://", "c:", "d:", "\\\\", "/etc/", "/var/", "/usr/")
     lower_url = url.lower()
     if any(lower_url.startswith(pref) for pref in forbidden_prefixes) or ".." in url:
@@ -97,6 +129,7 @@ def create_incident_report(
     """
     Creates a new human-submitted incident report.
     submitted_by_user_id is extracted from authenticated user session (never from client body).
+    Validates Event active status and Zone ↔ Event parent/child relationships.
     No fake default event IDs or synthetic fallbacks are used.
     """
     if not user or not user.id:
@@ -113,8 +146,8 @@ def create_incident_report(
             detail="Invalid user ID format in token session."
         )
 
-    # Validate Event context
-    target_event_id: Optional[str] = None
+    # 1. Event resolution & active status validation
+    target_event: Optional[Event] = None
     if payload.event_id:
         event_obj = validate_event_exists(db, payload.event_id)
         if not event_obj:
@@ -122,19 +155,24 @@ def create_incident_report(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Specified Event ID '{payload.event_id}' does not exist."
             )
-        target_event_id = str(event_obj.id)
-    else:
-        # Check if an existing real event is active in DB
-        active_event = db.query(Event).first()
-        if active_event:
-            target_event_id = str(active_event.id)
-        else:
+        if not is_event_active(event_obj):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Event ID is required and must be a valid, accessible event."
+                detail=f"Specified Event '{event_obj.name or event_obj.id}' is not active or eligible for incident reporting."
             )
+        target_event = event_obj
+    else:
+        active_event = resolve_current_active_event(db=db, user=user)
+        if not active_event:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Event context is required and no active event is currently available."
+            )
+        target_event = active_event
 
-    # Validate Zone if provided
+    target_event_id = str(target_event.id)
+
+    # 2. Zone validation & Event ↔ Zone relationship check
     target_zone_id: Optional[str] = None
     if payload.zone_id:
         zone_obj = validate_zone_exists(db, payload.zone_id)
@@ -143,9 +181,14 @@ def create_incident_report(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Specified Zone ID '{payload.zone_id}' does not exist."
             )
+        if str(zone_obj.event_id) != str(target_event_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Specified Zone '{zone_obj.name or zone_obj.id}' does not belong to Event '{target_event_id}'."
+            )
         target_zone_id = str(zone_obj.id)
 
-    # Sanitize media_url
+    # 3. Sanitize media_url
     safe_media_url = sanitize_media_url(payload.media_url)
 
     report_id = generate_report_id()
@@ -256,6 +299,7 @@ def review_incident_report(
     """
     Executes an operational review transition on an IncidentReport.
     Enforces canonical VALID_INCIDENT_REPORT_TRANSITIONS state machine.
+    Validates Zone ↔ Event relationship if zone is supplied upon acceptance.
     Guarantees 100% atomic transaction: report update, incident creation, transition creation, and audit logging succeed or roll back together.
     """
     report = get_incident_report_by_id(db, report_identifier)
@@ -369,7 +413,7 @@ def review_incident_report(
             )
 
     elif target_status == IncidentReportStatusEnum.ACCEPTED.value:
-        # Determine and validate zone ID
+        # Determine and validate zone ID if provided in review payload or report
         candidate_zone_id = review_payload.zone_id or report.zone_id
         target_zone_id: Optional[str] = None
 
@@ -379,6 +423,11 @@ def review_incident_report(
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Specified Zone ID '{candidate_zone_id}' does not exist."
+                )
+            if report.event_id and str(zone_obj.event_id) != str(report.event_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Specified Zone '{zone_obj.name or zone_obj.id}' does not belong to Event '{report.event_id}'."
                 )
             target_zone_id = str(zone_obj.id)
 

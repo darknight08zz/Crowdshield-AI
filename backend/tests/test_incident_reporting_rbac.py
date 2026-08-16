@@ -422,7 +422,7 @@ def test_26_no_synthetic_event_fallback():
         headers=headers_v
     )
     assert res.status_code == 400
-    assert "Event ID is required" in res.json()["detail"]
+    assert "no active event is currently available" in res.json()["detail"]
 
 
 def test_27_invalid_event_rejected():
@@ -696,3 +696,192 @@ def test_40_existing_ai_incident_provenance_unchanged():
     assert fetched.physics_risk_at_creation == 0.85
     assert fetched.label_type == "PHYSICS_DEFINED_PROXY"
     db.close()
+
+
+def test_test_a_explicit_valid_active_event():
+    """Test A: Explicit valid active event returns HTTP 201 and stores real event_id."""
+    headers_v = get_auth_headers("viewer")
+    payload = {
+        "title": "Crowd congestion",
+        "description": "Dense crowd near entrance",
+        "event_id": str(TEST_EVENT_UUID)
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 201
+    assert res.json()["event_id"] == str(TEST_EVENT_UUID)
+
+
+def test_test_b_invalid_event():
+    """Test B: Nonexistent event_id returns HTTP 400 and creates no report."""
+    headers_v = get_auth_headers("viewer")
+    invalid_uuid = str(uuid4())
+    payload = {
+        "title": "Invalid event report",
+        "description": "Testing invalid event ID",
+        "event_id": invalid_uuid
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 400
+    assert "does not exist" in res.json()["detail"]
+
+
+def test_test_c_inactive_event():
+    """Test C: Referencing an inactive event returns HTTP 400."""
+    db = TestingSessionLocal()
+    inactive_event_uuid = uuid4()
+    inactive_event = Event(
+        id=inactive_event_uuid,
+        name="Past Concluded Concert",
+        date=datetime.now(timezone.utc),
+        venue="Old Stadium",
+        status="completed"
+    )
+    db.add(inactive_event)
+    db.commit()
+    db.close()
+
+    headers_v = get_auth_headers("viewer")
+    payload = {
+        "title": "Report on closed event",
+        "description": "Testing inactive event rejection",
+        "event_id": str(inactive_event_uuid)
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 400
+    assert "not active or eligible" in res.json()["detail"]
+
+
+def test_test_d_omitted_event_id_with_active_event():
+    """Test D: Omitted event_id automatically resolves the canonical active event."""
+    headers_v = get_auth_headers("viewer")
+    payload = {
+        "title": "Report without explicit event_id",
+        "description": "Testing active event resolution"
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 201
+    assert res.json()["event_id"] == str(TEST_EVENT_UUID)
+
+
+def test_test_e_omitted_event_id_with_no_active_event():
+    """Test E: Omitted event_id returns HTTP 400 when no active event exists."""
+    db = TestingSessionLocal()
+    events = db.query(Event).all()
+    for ev in events:
+        ev.status = "completed"
+    db.commit()
+    db.close()
+
+    headers_v = get_auth_headers("viewer")
+    payload = {
+        "title": "No active event report",
+        "description": "Testing rejection when no active event exists"
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 400
+    assert "no active event is currently available" in res.json()["detail"]
+
+
+def test_test_f_mismatched_zone_event():
+    """Test F: Submitting Event A with Zone B (belonging to Event B) returns HTTP 400."""
+    db = TestingSessionLocal()
+    event_b_uuid = uuid4()
+    zone_b_uuid = uuid4()
+
+    event_b = Event(
+        id=event_b_uuid,
+        name="Secondary Event B",
+        date=datetime.now(timezone.utc),
+        venue="Hall B",
+        status="active"
+    )
+    zone_b = Zone(
+        id=zone_b_uuid,
+        event_id=event_b_uuid,
+        name="Hall B Entrance",
+        capacity=500
+    )
+    db.add(event_b)
+    db.add(zone_b)
+    db.commit()
+    db.close()
+
+    headers_v = get_auth_headers("viewer")
+    payload = {
+        "title": "Mismatched zone report",
+        "description": "Event A with Zone B",
+        "event_id": str(TEST_EVENT_UUID),
+        "zone_id": str(zone_b_uuid)
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 400
+    assert "does not belong to Event" in res.json()["detail"]
+
+
+def test_test_g_valid_event_plus_valid_zone():
+    """Test G: Submitting matching Event A and Zone A succeeds with HTTP 201."""
+    headers_v = get_auth_headers("viewer")
+    payload = {
+        "title": "Matched event and zone",
+        "description": "Event A with Zone A",
+        "event_id": str(TEST_EVENT_UUID),
+        "zone_id": str(TEST_ZONE_UUID)
+    }
+    res = client.post("/api/v1/incident-reports", json=payload, headers=headers_v)
+    assert res.status_code == 201
+    assert res.json()["event_id"] == str(TEST_EVENT_UUID)
+    assert res.json()["zone_id"] == str(TEST_ZONE_UUID)
+
+
+def test_test_h_viewer_ownership_remains_intact():
+    """Test H: Viewer A cannot see or access Viewer B's submitted reports."""
+    user_a_id = str(uuid4())
+    user_b_id = str(uuid4())
+    headers_a = get_auth_headers("viewer", user_id=user_a_id)
+    headers_b = get_auth_headers("viewer", user_id=user_b_id)
+
+    res_a = client.post("/api/v1/incident-reports", json={"title": "Report A", "description": "Desc A", "event_id": str(TEST_EVENT_UUID)}, headers=headers_a)
+    report_a_id = res_a.json()["report_id"]
+
+    res_b_list = client.get("/api/v1/incident-reports/my", headers=headers_b)
+    assert res_b_list.status_code == 200
+    report_ids_b = [r["report_id"] for r in res_b_list.json()]
+    assert report_a_id not in report_ids_b
+
+    res_b_detail = client.get(f"/api/v1/operator/incident-reports/{report_a_id}", headers=headers_b)
+    assert res_b_detail.status_code == 403
+
+
+def test_test_i_viewer_cannot_review():
+    """Test I: Viewer receives HTTP 403 when trying to review a report."""
+    headers_v = get_auth_headers("viewer")
+    res = client.post("/api/v1/operator/incident-reports/REP-20260816-000000/review", json={"status": "ACCEPTED"}, headers=headers_v)
+    assert res.status_code == 403
+
+
+def test_test_j_ai_provenance_unchanged():
+    """Test J: AI-generated incident provenance remains unchanged and isolated from Viewer reports."""
+    db = TestingSessionLocal()
+    ai_inc = Incident(
+        incident_id="INC-AI-TEST-J",
+        event_id=str(TEST_EVENT_UUID),
+        zone_id=str(TEST_ZONE_UUID),
+        source_type="AI_EARLY_WARNING_PROXY",
+        status="OPEN",
+        warning_state_at_creation="EARLY_WARNING",
+        physics_risk_at_creation=0.88,
+        ai_probability_at_creation=0.94,
+        latest_warning_state="CRITICAL",
+        model_version="v2.0.0",
+        label_type="PHYSICS_DEFINED_PROXY"
+    )
+    db.add(ai_inc)
+    db.commit()
+
+    fetched = db.query(Incident).filter(Incident.incident_id == "INC-AI-TEST-J").first()
+    assert fetched.source_type == "AI_EARLY_WARNING_PROXY"
+    assert fetched.model_version == "v2.0.0"
+    assert fetched.ai_probability_at_creation == 0.94
+    assert fetched.physics_risk_at_creation == 0.88
+    db.close()
+
