@@ -1,11 +1,10 @@
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
-
 class ZoneBase(BaseModel):
-    event_id: Optional[Any] = Field(default=None, description="Parent Event UUID")
+    event_id: Optional[Union[UUID, str]] = Field(default=None, description="Parent Event UUID")
     name: str
     capacity: int = Field(gt=0, description="Maximum occupant capacity of zone")
     current_density: float = Field(ge=0.0, default=0.0)
